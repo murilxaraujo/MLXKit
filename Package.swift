@@ -13,6 +13,10 @@ let package = Package(
             name: "MLXKit",
             targets: ["MLXKit"]
         ),
+        .executable(
+            name: "MNISTExample",
+            targets: ["MNISTExample"]
+        ),
     ],
     dependencies: [
         .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.31.3"),
@@ -27,6 +31,10 @@ let package = Package(
                 .product(name: "MLXFast", package: "mlx-swift"),
                 .product(name: "MLXOptimizers", package: "mlx-swift"),
             ]
+        ),
+        .executableTarget(
+            name: "MNISTExample",
+            dependencies: ["MLXKit"]
         ),
         .testTarget(
             name: "MLXKitTests",
