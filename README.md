@@ -105,7 +105,7 @@ See the [Makefile](Makefile) for all available commands.
 
 ## Documentation
 
-Documentation is available as a [DocC catalog](Sources/MLXKit/Documentation.docc/).
+Full API documentation is available at **[murilxaraujo.github.io/MLXKit](https://murilxaraujo.github.io/MLXKit/documentation/mlxkit/)**.
 
 To build locally:
 
