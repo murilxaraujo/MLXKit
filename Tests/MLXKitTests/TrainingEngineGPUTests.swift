@@ -38,7 +38,7 @@ private func makeRegressionDataset(count: Int) -> InMemoryDataset {
     return InMemoryDataset(features: features, labels: labels.reshaped([-1, 1]))
 }
 
-@Suite("TrainingEngine fit() (GPU)")
+@Suite("TrainingEngine fit() (GPU)", .serialized)
 struct TrainingEngineFitGPUTests {
     @Test func lossDecreasesOverEpochs() async throws {
         let model = TwoLayerModel()
@@ -145,7 +145,7 @@ struct TrainingEngineFitGPUTests {
     }
 }
 
-@Suite("TrainingEngine evaluate() (GPU)")
+@Suite("TrainingEngine evaluate() (GPU)", .serialized)
 struct TrainingEngineEvaluateGPUTests {
     @Test func returnsMetrics() async throws {
         let model = TwoLayerModel()

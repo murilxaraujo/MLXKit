@@ -27,7 +27,7 @@ private func makeSyntheticClassificationData(count: Int) -> InMemoryDataset {
     return InMemoryDataset(features: features, labels: labels)
 }
 
-@Suite("End-to-End Integration (GPU)")
+@Suite("End-to-End Integration (GPU)", .serialized)
 struct IntegrationGPUTests {
     @Test func fullTrainingPipeline() async throws {
         let model = TestClassifier()

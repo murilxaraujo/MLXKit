@@ -38,6 +38,9 @@ public enum Checkpointing {
     ///   - url: The file URL to write to (must have `.safetensors` extension).
     /// - Throws: If the file cannot be written.
     public static func saveWeights(_ model: Module, to url: URL) throws {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
         let flatParams = model.trainableParameters().flattened()
         let arrays = Dictionary(flatParams, uniquingKeysWith: { _, b in b })
         try MLX.save(arrays: arrays, url: url)
@@ -78,6 +81,9 @@ public enum Checkpointing {
         additionalMetadata: [String: String] = [:],
         to url: URL
     ) throws {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
         let flatParams = model.trainableParameters().flattened()
         let arrays = Dictionary(flatParams, uniquingKeysWith: { _, b in b })
         var metadata = additionalMetadata

@@ -2,6 +2,12 @@
 
 import PackageDescription
 
+/// Set to `true` to enable GPU-dependent tests (requires Apple Silicon + Metal).
+/// Use `make test-all` or pass `-Xswiftc -DMLX_GPU_TESTS` to enable.
+let enableGPUTests = ProcessInfo.processInfo.environment["MLX_GPU_TESTS"] != nil
+
+import Foundation
+
 let package = Package(
     name: "MLXKit",
     platforms: [
@@ -20,6 +26,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.31.3"),
+        .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.4.3"),
     ],
     targets: [
         .target(
@@ -38,7 +45,8 @@ let package = Package(
         ),
         .testTarget(
             name: "MLXKitTests",
-            dependencies: ["MLXKit"]
+            dependencies: ["MLXKit"],
+            swiftSettings: enableGPUTests ? [.define("MLX_GPU_TESTS")] : []
         ),
     ]
 )
