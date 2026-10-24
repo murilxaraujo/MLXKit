@@ -94,6 +94,12 @@ public final class TrainingEngine: @unchecked Sendable {
             throw TrainingError.invalidEpochCount(epochs)
         }
         try validateMetricNames(configuration.metrics)
+        try validateGradientProcessing(configuration.gradientProcessing)
+        guard configuration.gradientAccumulationSteps > 0 else {
+            throw TrainingError.invalidGradientAccumulationSteps(
+                configuration.gradientAccumulationSteps
+            )
+        }
         try Task.checkCancellation()
 
         let learningRateController: (any LearningRateControllable)?
@@ -155,6 +161,9 @@ public final class TrainingEngine: @unchecked Sendable {
                 var weightedLoss: Float = 0
                 var lossWeight: Int = 0
                 var batchIndex = 0
+                var pendingGradientSum: ModuleParameters?
+                var pendingSampleCount = 0
+                var pendingBatchCount = 0
 
                 for try await batch in data {
                     try Task.checkCancellation()
@@ -163,7 +172,9 @@ public final class TrainingEngine: @unchecked Sendable {
                         throw TrainingError.invalidSampleCount(batch.sampleCount)
                     }
 
-                    if let schedule = configuration.learningRateSchedule {
+                    if pendingBatchCount == 0,
+                       let schedule = configuration.learningRateSchedule
+                    {
                         let learningRate = schedule.learningRate(atStep: globalStep)
                         try learningRateController?.setLearningRate(learningRate)
                     }
@@ -188,13 +199,7 @@ public final class TrainingEngine: @unchecked Sendable {
                         throw TrainingError.nonFiniteObjective
                     }
 
-                    let flattenedGradients = gradients.flattened()
-                    for (_, gradient) in flattenedGradients {
-                        let finiteCount = isFinite(gradient).sum().item(Int.self)
-                        guard finiteCount == gradient.size else {
-                            throw TrainingError.nonFiniteGradient
-                        }
-                    }
+                    try validateFiniteGradients(gradients)
 
                     // Metrics observe predictions from the pre-update model.
                     let metricOutput = model(batch.input)
@@ -206,15 +211,53 @@ public final class TrainingEngine: @unchecked Sendable {
                     weightedLoss += scalarLoss * Float(batch.sampleCount)
                     lossWeight += batch.sampleCount
 
-                    configuration.optimizer.update(model: model, gradients: gradients)
-                    eval(model, configuration.optimizer)
-                    globalStep += 1
+                    let weightedGradients = configuration.gradientAccumulationSteps == 1
+                        ? gradients
+                        : gradients.mapValues { $0 * Float(batch.sampleCount) }
+                    if let accumulated = pendingGradientSum {
+                        try validateGradientStructure(gradients, matches: accumulated)
+                        let incoming = Dictionary(uniqueKeysWithValues: weightedGradients.flattened())
+                        pendingGradientSum = ModuleParameters.unflattened(
+                            accumulated.flattened().map { key, value in
+                                (key, value + incoming[key]!)
+                            }
+                        )
+                    } else {
+                        pendingGradientSum = weightedGradients
+                    }
+                    pendingSampleCount += batch.sampleCount
+                    pendingBatchCount += 1
+
+                    if pendingBatchCount == configuration.gradientAccumulationSteps {
+                        try applyAccumulatedGradients(
+                            pendingGradientSum!,
+                            sampleCount: pendingSampleCount,
+                            model: model,
+                            configuration: configuration,
+                            globalStep: &globalStep
+                        )
+                        pendingGradientSum = nil
+                        pendingSampleCount = 0
+                        pendingBatchCount = 0
+                    }
 
                     state.logs["loss"] = scalarLoss
                     try callbackList.onBatchEnd(state: state)
                     try Task.checkCancellation()
 
                     if state.shouldStop {
+                        if let gradientSum = pendingGradientSum {
+                            try applyAccumulatedGradients(
+                                gradientSum,
+                                sampleCount: pendingSampleCount,
+                                model: model,
+                                configuration: configuration,
+                                globalStep: &globalStep
+                            )
+                            pendingGradientSum = nil
+                            pendingSampleCount = 0
+                            pendingBatchCount = 0
+                        }
                         break
                     }
                     batchIndex += 1
@@ -223,6 +266,16 @@ public final class TrainingEngine: @unchecked Sendable {
                 try Task.checkCancellation()
                 guard batchIndex > 0 || state.shouldStop else {
                     throw TrainingError.emptyTrainingData
+                }
+
+                if let pendingGradientSum {
+                    try applyAccumulatedGradients(
+                        pendingGradientSum,
+                        sampleCount: pendingSampleCount,
+                        model: model,
+                        configuration: configuration,
+                        globalStep: &globalStep
+                    )
                 }
 
                 state.logs["loss"] = lossWeight == 0 ? 0 : weightedLoss / Float(lossWeight)
@@ -338,6 +391,119 @@ public final class TrainingEngine: @unchecked Sendable {
                 throw TrainingError.metricNameCollision(name)
             }
         }
+    }
+
+    private func validateGradientProcessing(
+        _ configuration: GradientProcessingConfiguration
+    ) throws {
+        if let maxNorm = configuration.globalNormClip,
+           !maxNorm.isFinite || maxNorm <= 0
+        {
+            throw TrainingError.invalidGlobalNormClip(maxNorm)
+        }
+    }
+
+    private func processGradients(
+        _ gradients: ModuleParameters,
+        using configuration: GradientProcessingConfiguration
+    ) throws -> ModuleParameters {
+        var processed = gradients
+        for transform in configuration.transforms {
+            let transformed = try transform(processed)
+            try validateGradientStructure(transformed, matches: gradients)
+            try validateFiniteGradients(transformed)
+            processed = transformed
+        }
+
+        if let maxNorm = configuration.globalNormClip {
+            processed = try clipGlobalNorm(processed, maxNorm: maxNorm)
+            try validateGradientStructure(processed, matches: gradients)
+            try validateFiniteGradients(processed)
+        }
+
+        return processed
+    }
+
+    private func applyAccumulatedGradients<Model: TrainableModel, Target>(
+        _ gradientSum: ModuleParameters,
+        sampleCount: Int,
+        model: Model,
+        configuration: TrainingConfiguration<Model.Output, Target>,
+        globalStep: inout Int
+    ) throws {
+        guard sampleCount > 0 else {
+            throw TrainingError.invalidSampleCount(sampleCount)
+        }
+        let meanGradients = configuration.gradientAccumulationSteps == 1
+            ? gradientSum
+            : gradientSum.mapValues { $0 / Float(sampleCount) }
+        if configuration.gradientAccumulationSteps > 1 {
+            try validateFiniteGradients(meanGradients)
+        }
+        let processedGradients = try processGradients(
+            meanGradients,
+            using: configuration.gradientProcessing
+        )
+        configuration.optimizer.update(model: model, gradients: processedGradients)
+        eval(model, configuration.optimizer)
+        globalStep += 1
+    }
+
+    private func validateGradientStructure(
+        _ candidate: ModuleParameters,
+        matches expected: ModuleParameters
+    ) throws {
+        let expectedLeaves = expected.flattened().sorted { $0.0 < $1.0 }
+        let actualLeaves = candidate.flattened().sorted { $0.0 < $1.0 }
+        let expectedKeys = expectedLeaves.map(\.0)
+        let actualKeys = actualLeaves.map(\.0)
+        guard expectedKeys == actualKeys else {
+            throw TrainingError.gradientTreeKeyMismatch(
+                expected: expectedKeys,
+                actual: actualKeys
+            )
+        }
+
+        for (expectedLeaf, actualLeaf) in zip(expectedLeaves, actualLeaves) {
+            guard expectedLeaf.1.shape == actualLeaf.1.shape else {
+                throw TrainingError.gradientShapeMismatch(
+                    parameter: expectedLeaf.0,
+                    expected: expectedLeaf.1.shape,
+                    actual: actualLeaf.1.shape
+                )
+            }
+        }
+    }
+
+    private func validateFiniteGradients(_ gradients: ModuleParameters) throws {
+        eval(gradients)
+        for (_, gradient) in gradients.flattened() {
+            let finiteCount = isFinite(gradient).sum().item(Int.self)
+            guard finiteCount == gradient.size else {
+                throw TrainingError.nonFiniteGradient
+            }
+        }
+    }
+
+    private func clipGlobalNorm(
+        _ gradients: ModuleParameters,
+        maxNorm: Float
+    ) throws -> ModuleParameters {
+        let squaredNorm = gradients.flattened().reduce(MLXArray(Float32(0))) { total, leaf in
+            let values = leaf.1.asType(.float32)
+            return total + (values * values).sum()
+        }
+        eval(squaredNorm)
+        let norm = sqrt(squaredNorm).item(Float.self)
+        guard norm.isFinite else {
+            throw TrainingError.nonFiniteGradient
+        }
+        guard norm > maxNorm else {
+            return gradients
+        }
+
+        let scale = maxNorm / norm
+        return gradients.mapValues { $0 * scale }
     }
 
     /// Runs the model in inference mode for one typed input and restores its

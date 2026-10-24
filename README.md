@@ -83,6 +83,7 @@ let info = try Checkpointing.load(into: restoredModel, from: checkpointURL)
 | Module | Description |
 |---|---|
 | **Training Engine** | Typed `fit()` / `evaluate()` / `predict()` over async batch sequences |
+| **M5 Training Controls** | Ordered gradient transforms, global-norm clipping, sample-aware accumulation, and explicit sample/class-weighted cross entropy |
 | **Losses** | CrossEntropy, BCE, MSE, L1, Huber, KLDiv with configurable reduction |
 | **Metrics** | Accuracy, TopK, MSE, and MAE with batch accumulation; `RunningLoss` is a standalone helper |
 | **Callbacks** | EarlyStopping, ModelCheckpoint, ProgressReporter, Lambda |
@@ -111,6 +112,7 @@ See the [Makefile](Makefile) for all available commands.
 Full API documentation is available at **[murilxaraujo.github.io/MLXKit](https://murilxaraujo.github.io/MLXKit/documentation/mlxkit)**.
 See the [data pipeline guide](Sources/MLXKit/Documentation.docc/DataPipeline.md) for typed in-memory and streaming batches, shuffle/prefetch semantics, and migration guidance. Run `swift run DataPipelineExample` for a local example.
 See the [M2 training semantics](Sources/MLXKit/Documentation.docc/M2TrainingSemantics.md) for scalar objectives, aggregation, schedules, callback lifecycle, cancellation, and failure behavior.
+See the [M5 training-control semantics](Sources/MLXKit/Documentation.docc/M5TrainingControlSemantics.md) for ordered gradient transforms, clipping, sample-aware accumulation, weighted cross entropy, and the `TrainingStep` boundary. `MNISTExample` demonstrates standard-path controls; `TinyDecoderExample` demonstrates a custom loss-computation step. Both use local data.
 Read the [MLXKit 2.0 product scope](Sources/MLXKit/Documentation.docc/ProductScope.md) for its target users, product goals, non-goals, and roadmap success criteria.
 See the [integrated MLXKit 2.0 API design](Sources/MLXKit/Documentation.docc/API2Design.md) for the full API direction and the data pipeline's public contracts.
 See the [platform support matrix](Sources/MLXKit/Documentation.docc/PlatformSupport.md), [compatibility policy](Sources/MLXKit/Documentation.docc/CompatibilityPolicy.md), [MLX responsibility boundary](Sources/MLXKit/Documentation.docc/MLXKitAndMLX.md), and [reference workload plan](Sources/MLXKit/Documentation.docc/ReferenceWorkloads.md) for the M0 product contract.

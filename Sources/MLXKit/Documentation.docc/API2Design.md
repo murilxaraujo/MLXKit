@@ -1,15 +1,20 @@
 # MLXKit 2.0 Public API Design
 
-**Status:** integrated M1 design and M2/M4 implementation record. The typed
-training, objective/metric, schedule, lifecycle, and sample-to-batch pipeline
-contracts described here are implemented. The training engine continues to
-consume asynchronous sequences of already-built typed ``Batch`` values. This
-page is not a final 2.0 compatibility promise.
+**Status:** integrated M1 design and M2/M4 implementation record, with M5
+gradient processing, accumulation, and weighted cross entropy implemented. The
+typed training, objective/metric, schedule, lifecycle, gradient-processing,
+accumulation, weighted-loss, and sample-to-batch contracts described here are
+implemented. The training engine continues to consume asynchronous sequences
+of already-built typed ``Batch`` values. This page is not a final 2.0
+compatibility promise.
 
 Detailed contract notes are in <doc:M1ModelContract>,
 <doc:M1ObjectiveMetricContract>, <doc:M1TrainingWorkflow>, and
 <doc:M1DataContract>. Custom-model parameter and inference-cache boundaries are
-described in <doc:CustomModelState>.
+described in <doc:CustomModelState>. The M5 training-control contract is
+recorded in <doc:M5TrainingControlSemantics>, including the explicit
+`CrossEntropyLoss.weightedMean(predictions:targets:sampleWeights:classWeights:)`
+operation.
 
 ## Design principles
 
@@ -126,17 +131,23 @@ public struct TrainingConfiguration<Output, Target> {
     public let objective: any Objective<Output, Target>
     public let metrics: [any Metric<Output, Target>]
     public let learningRateSchedule: (any LRSchedule)?
+    public let gradientProcessing: GradientProcessingConfiguration
+    public let gradientAccumulationSteps: Int
 
     public init<ObjectiveType: Objective<Output, Target>>(
         optimizer: any Optimizer,
         objective: ObjectiveType,
         metrics: [any Metric<Output, Target>] = [],
-        learningRateSchedule: (any LRSchedule)? = nil
+        learningRateSchedule: (any LRSchedule)? = nil,
+        gradientProcessing: GradientProcessingConfiguration = .init(),
+        gradientAccumulationSteps: Int = 1
     ) {
         self.optimizer = optimizer
         self.objective = objective
         self.metrics = metrics
         self.learningRateSchedule = learningRateSchedule
+        self.gradientProcessing = gradientProcessing
+        self.gradientAccumulationSteps = gradientAccumulationSteps
     }
 }
 ```
@@ -148,9 +159,11 @@ algorithms.
 
 `TrainingStep` is an optional lower-level loss-computation hook. It receives
 the concrete model and full typed batch and returns a scalar objective. MLXKit
-still owns autodiff, one optimizer update per batch, callbacks, and lifecycle.
-For a custom gradient/update algorithm, users use MLX and MLXOptimizers
-directly.
+still owns autodiff, optimizer updates, callbacks, and lifecycle. The default
+behavior is one optimizer update per batch. Optional M5 accumulation groups
+consecutive batches into one sample-normalized update, then applies configured
+gradient transforms and clipping. For a custom gradient/update algorithm,
+users use MLX and MLXOptimizers directly.
 
 ```swift
 public typealias TrainingStep<Model: TrainableModel, Target> =
