@@ -131,3 +131,5 @@ decided in their respective milestones.
   direction while implementation semantics remain assigned to M2.
 - <doc:M1TrainingWorkflow> records the pair-approved training-step,
   optimizer/schedule, callback, and cancellation boundaries.
+- <doc:M1DataContract> records the pair-approved sample, collation, streaming,
+  shuffle, and bounded-prefetch boundaries.
