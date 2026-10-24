@@ -113,3 +113,11 @@ M0 establishes the product and platform contract. The outcomes above map each
 subsequent milestone to that contract. Later milestones remain planning drafts
 until the preceding milestone is complete; API and implementation details are
 decided in their respective milestones.
+
+## M0 contract documents
+
+- <doc:MLXKitAndMLX> defines the MLXKit/MLX responsibility boundary and open
+  M1 API decisions.
+- <doc:PlatformSupport> defines the tested platform and backend baseline.
+- <doc:CompatibilityPolicy> defines pre-2.0 and 2.0 compatibility promises.
+- <doc:ReferenceWorkloads> defines the workloads and validation method for M8.

@@ -6,9 +6,9 @@ MLXKit provides a Keras-style training API: define a model, compile it with an o
 
 ## Requirements
 
-- macOS 27+
-- Swift 6.4+
-- Apple Silicon (M1 or later)
+- macOS 27.x
+- Swift 6.4 with Xcode 27.0
+- Apple Silicon (`arm64`, M1 or later)
 
 ## Installation
 
@@ -107,6 +107,7 @@ See the [Makefile](Makefile) for all available commands.
 
 Full API documentation is available at **[murilxaraujo.github.io/MLXKit](https://murilxaraujo.github.io/MLXKit/documentation/mlxkit)**.
 Read the [MLXKit 2.0 product scope](Sources/MLXKit/Documentation.docc/ProductScope.md) for its target users, product goals, non-goals, and roadmap success criteria.
+See the [platform support matrix](Sources/MLXKit/Documentation.docc/PlatformSupport.md), [compatibility policy](Sources/MLXKit/Documentation.docc/CompatibilityPolicy.md), [MLX responsibility boundary](Sources/MLXKit/Documentation.docc/MLXKitAndMLX.md), and [reference workload plan](Sources/MLXKit/Documentation.docc/ReferenceWorkloads.md) for the M0 product contract.
 
 To build locally:
 
