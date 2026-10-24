@@ -36,6 +36,7 @@ let history = try await engine.fit(
 - <doc:CompatibilityPolicy>
 - <doc:ReferenceWorkloads>
 - <doc:M2TrainingSemantics>
+- <doc:M5TrainingControlSemantics>
 - <doc:CustomModelState>
 - <doc:TinyDecoderExample>
 - <doc:M1ModelContract>

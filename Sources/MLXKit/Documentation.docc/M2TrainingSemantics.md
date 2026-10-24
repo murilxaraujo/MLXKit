@@ -97,3 +97,7 @@ prefetch, or backpressure. M5 gradient controls and multi-update training,
 and M6 distributed execution, are also deferred. MLXKit validates the scalar
 objective contract and its own configuration; MLX continues to define runtime
 array shape, dtype, and device behavior.
+
+The prospective M5 control ordering, accumulation, weighting, and failure
+contracts are recorded in <doc:M5TrainingControlSemantics>. They do not change
+the implemented M2 behavior until M5 implementation is complete.

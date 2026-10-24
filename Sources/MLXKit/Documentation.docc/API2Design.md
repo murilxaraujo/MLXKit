@@ -9,7 +9,9 @@ page is not a final 2.0 compatibility promise.
 Detailed contract notes are in <doc:M1ModelContract>,
 <doc:M1ObjectiveMetricContract>, <doc:M1TrainingWorkflow>, and
 <doc:M1DataContract>. Custom-model parameter and inference-cache boundaries are
-described in <doc:CustomModelState>.
+described in <doc:CustomModelState>. The M5 training-control contract is
+recorded in <doc:M5TrainingControlSemantics>; those controls remain planned
+until their implementation issues are complete.
 
 ## Design principles
 
@@ -148,9 +150,11 @@ algorithms.
 
 `TrainingStep` is an optional lower-level loss-computation hook. It receives
 the concrete model and full typed batch and returns a scalar objective. MLXKit
-still owns autodiff, one optimizer update per batch, callbacks, and lifecycle.
-For a custom gradient/update algorithm, users use MLX and MLXOptimizers
-directly.
+still owns autodiff, optimizer updates, callbacks, and lifecycle. Under the
+implemented M2 behavior, there is one optimizer update per batch; planned M5
+accumulation can group batches into one update as described in
+<doc:M5TrainingControlSemantics>. For a custom gradient/update algorithm, users
+use MLX and MLXOptimizers directly.
 
 ```swift
 public typealias TrainingStep<Model: TrainableModel, Target> =
