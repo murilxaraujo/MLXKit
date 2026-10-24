@@ -3,6 +3,10 @@ import MLX
 import MLXNN
 import MLXKit
 
+/// Multi-head causal self-attention using public MLX array operations.
+///
+/// Scores are `QKᵀ / sqrt(headWidth)`. The upper-triangular future positions
+/// receive a large negative additive mask before softmax.
 final class CausalSelfAttention: Module {
     @ModuleInfo private var query: Linear
     @ModuleInfo private var key: Linear
@@ -28,13 +32,22 @@ final class CausalSelfAttention: Module {
                 .transposed(0, 2, 1, 3)
         }
 
-        let attended = MLXFast.scaledDotProductAttention(
-            queries: splitHeads(query(input)),
-            keys: splitHeads(key(input)),
-            values: splitHeads(value(input)),
-            scale: Float(1) / Float(Foundation.sqrt(Double(headWidth))),
-            mask: .causal
-        )
+        let queries = splitHeads(query(input))
+        let keys = splitHeads(key(input))
+        let values = splitHeads(value(input))
+        let sequenceLength = input.dim(1)
+        let scale = Float(1) / Float(Foundation.sqrt(Double(headWidth)))
+        let maskValues = (0..<sequenceLength).flatMap { queryPosition in
+            (0..<sequenceLength).map { keyPosition in
+                keyPosition <= queryPosition ? Float(0) : Float(-1e9)
+            }
+        }
+        let causalMask = MLXArray(maskValues).reshaped([
+            1, 1, sequenceLength, sequenceLength,
+        ])
+        let scores = matmul(queries, keys.transposed(0, 1, 3, 2)) * scale + causalMask
+        let attentionWeights = softmax(scores, axis: -1, precise: true)
+        let attended = matmul(attentionWeights, values)
         let mergedHeads = attended.transposed(0, 2, 1, 3).flattened(start: -2, end: -1)
         return output(mergedHeads)
     }
@@ -48,6 +61,7 @@ final class DecoderBlock: Module {
     @ModuleInfo private var mlpOutput: Linear
 
     init(width: Int, headCount: Int) {
+        precondition(headCount > 0 && width % headCount == 0)
         self.attentionNorm = LayerNorm(dimensions: width)
         self.attention = CausalSelfAttention(width: width, headCount: headCount)
         self.mlpNorm = LayerNorm(dimensions: width)
@@ -63,23 +77,32 @@ final class DecoderBlock: Module {
     }
 }
 
-public final class TinyDecoder: Module, TrainableModel {
+// Engine operations are awaited serially by the example. The caller does not
+// access the module while an awaited operation is mutating its parameters.
+public final class TinyDecoder: Module, TrainableModel, @unchecked Sendable {
     public typealias Input = MLXArray
     public typealias Output = MLXArray
 
     @ModuleInfo private var tokenEmbedding: Embedding
     @ModuleInfo private var positionEmbedding: Embedding
-    @ModuleInfo private var block: DecoderBlock
+    @ModuleInfo private var block0: DecoderBlock
+    @ModuleInfo private var block1: DecoderBlock
     @ModuleInfo private var finalNorm: LayerNorm
     private let maximumSequenceLength: Int
 
-    public init(vocabularySize: Int, width: Int, headCount: Int, maximumSequenceLength: Int) {
+    public init(
+        vocabularySize: Int,
+        width: Int,
+        headCount: Int,
+        maximumSequenceLength: Int
+    ) {
         precondition(vocabularySize > 1)
-        precondition(width > 0 && width % headCount == 0)
+        precondition(headCount > 0 && width > 0 && width % headCount == 0)
         precondition(maximumSequenceLength > 0)
         self.tokenEmbedding = Embedding(embeddingCount: vocabularySize, dimensions: width)
         self.positionEmbedding = Embedding(embeddingCount: maximumSequenceLength, dimensions: width)
-        self.block = DecoderBlock(width: width, headCount: headCount)
+        self.block0 = DecoderBlock(width: width, headCount: headCount)
+        self.block1 = DecoderBlock(width: width, headCount: headCount)
         self.finalNorm = LayerNorm(dimensions: width)
         self.maximumSequenceLength = maximumSequenceLength
         super.init()
@@ -91,7 +114,7 @@ public final class TinyDecoder: Module, TrainableModel {
 
         let positions = MLXArray((0..<sequenceLength).map(Int32.init))
         let embeddings = tokenEmbedding(tokenIDs) + positionEmbedding(positions)
-        let hidden = block(embeddings)
+        let hidden = block1(block0(embeddings))
         return tokenEmbedding.asLinear(finalNorm(hidden))
     }
 }

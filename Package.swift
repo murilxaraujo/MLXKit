@@ -23,6 +23,10 @@ let package = Package(
             targets: ["MNISTExample"]
         ),
         .executable(
+            name: "ContrastiveEmbeddingExample",
+            targets: ["ContrastiveEmbeddingExample"]
+        ),
+        .executable(
             name: "TinyDecoderExample",
             targets: ["TinyDecoderExample"]
         ),
@@ -48,6 +52,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "MNISTExample",
+            dependencies: ["MLXKit"]
+        ),
+        .executableTarget(
+            name: "ContrastiveEmbeddingExample",
             dependencies: ["MLXKit"]
         ),
         .target(
