@@ -88,7 +88,7 @@ struct DataLoaderGPUTests {
 
     @Test func lastBatchSmallerWhenNotDropped() async {
         let loader = DataLoader(dataset: makeDataset(count: 10), batchSize: 3, dropLast: false)
-        var lastBatch: Batch?
+        var lastBatch: Batch<MLXArray, MLXArray>?
         for await batch in loader { lastBatch = batch }
         // 10 % 3 = 1 remaining sample
         #expect(lastBatch?.size == 1)

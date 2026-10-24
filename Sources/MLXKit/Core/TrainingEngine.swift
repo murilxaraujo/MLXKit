@@ -3,263 +3,321 @@ import MLX
 import MLXNN
 import MLXOptimizers
 
-/// The central training orchestrator that wires losses, metrics, callbacks,
-/// data loading, LR schedules, and gradient computation into a Keras-style
-/// training loop.
-///
-/// ```swift
-/// let model = MyModel()
-/// let engine = TrainingEngine()
-/// let config = engine.compile(
-///     model: model,
-///     optimizer: Adam(learningRate: 1e-3),
-///     loss: CrossEntropyLoss(),
-///     metrics: [Accuracy()]
-/// )
-///
-/// let trainLoader = DataLoader(dataset: trainData, batchSize: 32, shuffle: true)
-/// let history = try await engine.fit(
-///     model, config: config, data: trainLoader,
-///     epochs: 10, callbacks: [.progressReporter, .earlyStopping]
-/// )
-/// ```
-public final class TrainingEngine: @unchecked Sendable {
+/// Computes a scalar objective from a model and its complete batch. MLXKit
+/// retains responsibility for autodiff, optimizer updates, and lifecycle.
+public typealias TrainingStep<Model: TrainableModel, Target> =
+    (Model, Batch<Model.Input, Target>) -> MLXArray
 
+/// Coordinates training, evaluation, and prediction while leaving model
+/// parameters, tensor operations, autodiff, and optimizer algorithms to MLX.
+public final class TrainingEngine: @unchecked Sendable {
     public init() {}
 
-    /// Configures training by bundling optimizer, loss, metrics, and LR schedule.
-    ///
-    /// - Returns: A ``TrainingConfiguration`` to pass to ``fit(_:config:data:epochs:validationData:callbacks:)``.
-    public func compile(
-        model: some TrainableModel,
-        optimizer: any Optimizer,
-        loss: any LossFunction,
-        metrics: [any Metric] = [],
-        lrSchedule: (any LRSchedule)? = nil
-    ) -> TrainingConfiguration {
-        eval(model)
-        return TrainingConfiguration(
-            optimizer: optimizer,
-            loss: loss,
-            metrics: metrics,
-            lrSchedule: lrSchedule
+    /// Trains a model from a typed asynchronous sequence of batches.
+    public func fit<Model: TrainableModel, Target, Data: AsyncSequence>(
+        _ model: Model,
+        configuration: TrainingConfiguration<Model.Output, Target>,
+        data: Data,
+        epochs: Int,
+        trainingStep: TrainingStep<Model, Target>? = nil,
+        callbacks: [any Callback] = []
+    ) async throws -> History
+    where Data.Element == Batch<Model.Input, Target>, Data.Failure: Error {
+        try await fitCore(
+            model,
+            configuration: configuration,
+            data: data,
+            epochs: epochs,
+            validationData: EmptyBatchSequence<Batch<Model.Input, Target>>(),
+            hasValidationData: false,
+            trainingStep: trainingStep,
+            callbacks: callbacks
         )
     }
 
-    // MARK: - fit()
-
-    /// Trains the model for the specified number of epochs.
-    ///
-    /// - Parameters:
-    ///   - model: The model to train.
-    ///   - config: The training configuration from ``compile(model:optimizer:loss:metrics:lrSchedule:)``.
-    ///   - data: The training data loader.
-    ///   - epochs: Number of epochs to train.
-    ///   - validationData: Optional validation data loader.
-    ///   - callbacks: Callbacks to invoke during training.
-    /// - Returns: A ``History`` containing per-epoch metric logs.
-    public func fit<D: Dataset>(
-        _ model: some TrainableModel,
-        config: TrainingConfiguration,
-        data: DataLoader<D>,
+    /// Trains a model and evaluates it against a validation sequence after
+    /// each epoch.
+    public func fit<
+        Model: TrainableModel,
+        Target,
+        Data: AsyncSequence,
+        ValidationData: AsyncSequence
+    >(
+        _ model: Model,
+        configuration: TrainingConfiguration<Model.Output, Target>,
+        data: Data,
         epochs: Int,
-        validationData: DataLoader<D>? = nil,
+        validationData: ValidationData,
+        trainingStep: TrainingStep<Model, Target>? = nil,
         callbacks: [any Callback] = []
-    ) async throws -> History {
-        let history = History()
-        let allCallbacks = [history] + callbacks
-        let callbackList = CallbackList(allCallbacks)
-        let state = TrainingState()
-        state.totalEpochs = epochs
+    ) async throws -> History
+    where
+        Data.Element == Batch<Model.Input, Target>,
+        Data.Failure: Error,
+        ValidationData.Element == Batch<Model.Input, Target>,
+        ValidationData.Failure: Error
+    {
+        try await fitCore(
+            model,
+            configuration: configuration,
+            data: data,
+            epochs: epochs,
+            validationData: validationData,
+            hasValidationData: true,
+            trainingStep: trainingStep,
+            callbacks: callbacks
+        )
+    }
 
-        let runningLoss = RunningLoss(name: "loss")
-
-        // Build valueAndGrad closure
-        let lossGrad = valueAndGrad(model: model) {
-            (model: Module, x: MLXArray, y: MLXArray) -> MLXArray in
-            let trainable = model as! any TrainableModel
-            let yPred = trainable.forward(x)
-            return config.loss(predictions: yPred, targets: y)
+    private func fitCore<
+        Model: TrainableModel,
+        Target,
+        Data: AsyncSequence,
+        ValidationData: AsyncSequence
+    >(
+        _ model: Model,
+        configuration: TrainingConfiguration<Model.Output, Target>,
+        data: Data,
+        epochs: Int,
+        validationData: ValidationData,
+        hasValidationData: Bool,
+        trainingStep: TrainingStep<Model, Target>?,
+        callbacks: [any Callback]
+    ) async throws -> History
+    where
+        Data.Element == Batch<Model.Input, Target>,
+        Data.Failure: Error,
+        ValidationData.Element == Batch<Model.Input, Target>,
+        ValidationData.Failure: Error
+    {
+        guard epochs > 0 else {
+            throw TrainingError.invalidEpochCount(epochs)
         }
 
-        var globalStep = 0
-
+        let history = History()
+        let callbackList = CallbackList([history] + callbacks)
+        let state = TrainingState()
+        state.totalEpochs = epochs
         callbackList.onTrainBegin(state: state)
+
+        var globalStep = 0
+        let lossAndGrad = valueAndGrad(model: model) { (differentiableModel: Model, batch: Batch<Model.Input, Target>) in
+            let output = differentiableModel(batch.input)
+            let objective: MLXArray
+            if let trainingStep {
+                objective = trainingStep(differentiableModel, batch)
+            } else {
+                objective = configuration.objective(output: output, target: batch.target)
+            }
+            return [objective]
+        }
 
         for epoch in 0..<epochs {
             state.epoch = epoch
             state.batch = 0
             state.logs = [:]
+            state.shouldStop = false
 
             model.train(true)
-            runningLoss.reset()
-            for metric in config.metrics { metric.reset() }
-
+            for metric in configuration.metrics {
+                metric.reset()
+            }
             callbackList.onEpochBegin(state: state)
 
+            var weightedLoss: Float = 0
+            var lossWeight: Int = 0
             var batchIndex = 0
-            for await batch in data {
-                state.batch = batchIndex
 
-                // Apply LR schedule
-                if let schedule = config.lrSchedule {
-                    let lr = schedule.learningRate(atStep: globalStep)
-                    setLearningRate(config.optimizer, lr)
+            for try await batch in data {
+                state.batch = batchIndex
+                guard batch.sampleCount > 0 else {
+                    throw TrainingError.invalidSampleCount(batch.sampleCount)
+                }
+
+                if let schedule = configuration.learningRateSchedule {
+                    let learningRate = schedule.learningRate(atStep: globalStep)
+                    setLearningRate(configuration.optimizer, learningRate)
                 }
 
                 callbackList.onBatchBegin(state: state)
 
-                // Forward + backward + update
-                let (lossValue, gradients) = lossGrad(model, batch.features, batch.labels)
-                config.optimizer.update(model: model, gradients: gradients)
-                eval(model, config.optimizer)
+                let (values, gradients) = lossAndGrad(model, batch)
+                guard let lossValue = values.first else {
+                    throw TrainingError.nonScalarObjective(shape: [])
+                }
+                guard lossValue.ndim == 0 else {
+                    throw TrainingError.nonScalarObjective(shape: lossValue.shape)
+                }
+                eval(lossValue, gradients)
 
-                // Update metrics
-                let lossScalar = lossValue.item(Float.self)
-                runningLoss.update(loss: lossValue, count: batch.size)
-
-                let yPred = model.forward(batch.features)
-                for metric in config.metrics {
-                    metric.update(predictions: yPred, targets: batch.labels)
+                // Metrics see the model output before this batch's update.
+                // The objective forward pass remains inside MLX's gradient transform.
+                let metricOutput = model(batch.input)
+                eval(metricOutput)
+                for metric in configuration.metrics {
+                    metric.update(output: metricOutput, target: batch.target)
                 }
 
-                state.logs["loss"] = lossScalar
+                let scalarLoss = lossValue.item(Float.self)
+                weightedLoss += scalarLoss * Float(batch.sampleCount)
+                lossWeight += batch.sampleCount
+
+                configuration.optimizer.update(model: model, gradients: gradients)
+                eval(model, configuration.optimizer)
+
+                state.logs["loss"] = scalarLoss
                 callbackList.onBatchEnd(state: state)
 
-                if state.shouldStop { break }
+                if state.shouldStop {
+                    break
+                }
                 batchIndex += 1
                 globalStep += 1
             }
 
-            // Epoch-level logs
-            state.logs["loss"] = runningLoss.compute()
-            for metric in config.metrics {
+            guard batchIndex > 0 || state.shouldStop else {
+                throw TrainingError.emptyTrainingData
+            }
+
+            state.logs["loss"] = lossWeight == 0 ? 0 : weightedLoss / Float(lossWeight)
+            for metric in configuration.metrics {
                 state.logs[metric.name] = metric.compute()
             }
 
-            // Validation
-            if let validationData {
-                let valMetrics = try await evaluate(
-                    model, config: config, data: validationData
+            if hasValidationData {
+                let validationValues = try await evaluate(
+                    model,
+                    configuration: configuration,
+                    data: validationData,
+                    trainingStep: trainingStep
                 )
-                for (key, value) in valMetrics {
-                    state.logs["val_\(key)"] = value
+                for (name, value) in validationValues {
+                    state.logs["val_\(name)"] = value
                 }
             }
 
             callbackList.onEpochEnd(state: state)
-
-            if state.shouldStop { break }
-        }
-
-        callbackList.onTrainEnd(state: state)
-
-        return history
-    }
-
-    // MARK: - evaluate()
-
-    /// Evaluates the model on the given data without computing gradients.
-    ///
-    /// - Parameters:
-    ///   - model: The model to evaluate.
-    ///   - config: The training configuration.
-    ///   - data: The evaluation data loader.
-    /// - Returns: A dictionary of metric names to their computed values.
-    public func evaluate<D: Dataset>(
-        _ model: some TrainableModel,
-        config: TrainingConfiguration,
-        data: DataLoader<D>
-    ) async throws -> [String: Float] {
-        let wasTraining = model.training
-        model.train(false)
-        defer { model.train(wasTraining) }
-
-        let runningLoss = RunningLoss(name: "loss")
-        for metric in config.metrics { metric.reset() }
-
-        for await batch in data {
-            let yPred = model.forward(batch.features)
-            eval(yPred)
-
-            let lossValue = config.loss(predictions: yPred, targets: batch.labels)
-            runningLoss.update(loss: lossValue, count: batch.size)
-
-            for metric in config.metrics {
-                metric.update(predictions: yPred, targets: batch.labels)
+            if state.shouldStop {
+                break
             }
         }
 
-        var results: [String: Float] = ["loss": runningLoss.compute()]
-        for metric in config.metrics {
-            results[metric.name] = metric.compute()
-        }
-
-        return results
+        callbackList.onTrainEnd(state: state)
+        return history
     }
 
-    // MARK: - predict()
-
-    /// Runs the model in inference mode on a single input.
-    ///
-    /// - Parameters:
-    ///   - model: The model to use for prediction.
-    ///   - input: The input tensor.
-    /// - Returns: The model's output.
-    public func predict(_ model: some TrainableModel, input: MLXArray) -> MLXArray {
+    /// Evaluates a model without applying gradients or optimizer updates.
+    public func evaluate<Model: TrainableModel, Target, Data: AsyncSequence>(
+        _ model: Model,
+        configuration: TrainingConfiguration<Model.Output, Target>,
+        data: Data,
+        trainingStep: TrainingStep<Model, Target>? = nil
+    ) async throws -> [String: Float]
+    where Data.Element == Batch<Model.Input, Target>, Data.Failure: Error {
         let wasTraining = model.training
         model.train(false)
         defer { model.train(wasTraining) }
 
-        let output = model.forward(input)
+        for metric in configuration.metrics {
+            metric.reset()
+        }
+
+        var weightedLoss: Float = 0
+        var sampleCount = 0
+        var batchCount = 0
+
+        for try await batch in data {
+            guard batch.sampleCount > 0 else {
+                throw TrainingError.invalidSampleCount(batch.sampleCount)
+            }
+
+            let output = model(batch.input)
+            eval(output)
+            let loss = trainingStep?(model, batch)
+                ?? configuration.objective(output: output, target: batch.target)
+            guard loss.ndim == 0 else {
+                throw TrainingError.nonScalarObjective(shape: loss.shape)
+            }
+            eval(loss)
+            let scalarLoss = loss.item(Float.self)
+            weightedLoss += scalarLoss * Float(batch.sampleCount)
+            sampleCount += batch.sampleCount
+
+            for metric in configuration.metrics {
+                metric.update(output: output, target: batch.target)
+            }
+            batchCount += 1
+        }
+
+        guard batchCount > 0 else {
+            throw TrainingError.emptyEvaluationData
+        }
+
+        var results: [String: Float] = ["loss": weightedLoss / Float(sampleCount)]
+        for metric in configuration.metrics {
+            results[metric.name] = metric.compute()
+        }
+        return results
+    }
+
+    /// Runs the model in inference mode for one typed input and restores its
+    /// prior train/eval mode before returning.
+    public func predict<Model: TrainableModel>(_ model: Model, input: Model.Input) -> Model.Output {
+        let wasTraining = model.training
+        model.train(false)
+        defer { model.train(wasTraining) }
+
+        let output = model(input)
         eval(output)
         return output
     }
 
-    /// Runs the model in inference mode on batched data from a data loader.
-    ///
-    /// - Parameters:
-    ///   - model: The model to use for prediction.
-    ///   - data: The data loader to iterate.
-    /// - Returns: An array of output tensors, one per batch.
-    public func predict<D: Dataset>(
-        _ model: some TrainableModel,
-        data: DataLoader<D>
-    ) async -> [MLXArray] {
+    /// Predicts one output for each batch in an asynchronous sequence.
+    public func predict<Model: TrainableModel, Target, Data: AsyncSequence>(
+        _ model: Model,
+        data: Data
+    ) async throws -> [Model.Output]
+    where Data.Element == Batch<Model.Input, Target>, Data.Failure: Error {
         let wasTraining = model.training
         model.train(false)
         defer { model.train(wasTraining) }
 
-        var outputs: [MLXArray] = []
-        for await batch in data {
-            let output = model.forward(batch.features)
+        var outputs: [Model.Output] = []
+        for try await batch in data {
+            let output = model(batch.input)
             eval(output)
             outputs.append(output)
         }
         return outputs
     }
 
-    // MARK: - Helpers
-
-    /// Sets the learning rate on an optimizer via reflection on known optimizer types.
-    private func setLearningRate(_ optimizer: any Optimizer, _ lr: Float) {
-        // MLX Swift optimizers expose `learningRate` as a stored property
+    private func setLearningRate(_ optimizer: any Optimizer, _ learningRate: Float) {
         if let sgd = optimizer as? SGD {
-            sgd.learningRate = lr
+            sgd.learningRate = learningRate
         } else if let adam = optimizer as? Adam {
-            adam.learningRate = lr
+            adam.learningRate = learningRate
         } else if let adamax = optimizer as? Adamax {
-            adamax.learningRate = lr
+            adamax.learningRate = learningRate
         } else if let adaGrad = optimizer as? AdaGrad {
-            adaGrad.learningRate = lr
+            adaGrad.learningRate = learningRate
         } else if let adaDelta = optimizer as? AdaDelta {
-            adaDelta.learningRate = lr
+            adaDelta.learningRate = learningRate
         } else if let rmsProp = optimizer as? RMSprop {
-            rmsProp.learningRate = lr
+            rmsProp.learningRate = learningRate
         } else if let lion = optimizer as? Lion {
-            lion.learningRate = lr
+            lion.learningRate = learningRate
         } else if let adafactor = optimizer as? Adafactor {
-            adafactor.learningRate = lr
+            adafactor.learningRate = learningRate
         }
+    }
+}
+
+private struct EmptyBatchSequence<Element>: AsyncSequence {
+    typealias Failure = Never
+
+    func makeAsyncIterator() -> Iterator { Iterator() }
+
+    struct Iterator: AsyncIteratorProtocol {
+        mutating func next() async -> Element? { nil }
     }
 }

@@ -3,7 +3,7 @@
 // Trains a simple classifier on synthetic MNIST-like data (28x28 flattened
 // to 784 features, 10 classes) to demonstrate the complete workflow:
 //   1. Define a model conforming to TrainableModel
-//   2. Compile with optimizer, loss, metrics, and LR schedule
+//   2. Configure optimizer, objective, metrics, and LR schedule
 //   3. Fit with callbacks (progress, early stopping, history)
 //   4. Evaluate on validation data
 //   5. Predict on new inputs
@@ -20,11 +20,14 @@ import MLXKit
 // MARK: - Model
 
 final class MNISTModel: Module, TrainableModel {
+    typealias Input = MLXArray
+    typealias Output = MLXArray
+
     let linear1 = Linear(inputDimensions: 784, outputDimensions: 128)
     let linear2 = Linear(inputDimensions: 128, outputDimensions: 64)
     let linear3 = Linear(inputDimensions: 64, outputDimensions: 10)
 
-    func forward(_ input: MLXArray) -> MLXArray {
+    func callAsFunction(_ input: MLXArray) -> MLXArray {
         var x = linear1(input)
         x = maximum(x, 0) // ReLU
         x = linear2(x)
@@ -59,14 +62,13 @@ struct MNISTExample {
         model.printSummary()
         print()
 
-        // 3. Compile
+        // 3. Configure training
         let engine = TrainingEngine()
-        let config = engine.compile(
-            model: model,
+        let config = TrainingConfiguration(
             optimizer: Adam(learningRate: 1e-3),
-            loss: CrossEntropyLoss(),
+            objective: CrossEntropyLoss(),
             metrics: [Accuracy()],
-            lrSchedule: CosineDecay(initialLR: 1e-3, totalSteps: 500)
+            learningRateSchedule: CosineDecay(initialLR: 1e-3, totalSteps: 500)
         )
 
         // 4. Create data loaders
@@ -78,7 +80,7 @@ struct MNISTExample {
         // 5. Fit with callbacks
         print("Training...")
         let history = try await engine.fit(
-            model, config: config, data: trainLoader,
+            model, configuration: config, data: trainLoader,
             epochs: 5,
             validationData: valLoader,
             callbacks: [ProgressReporter()]
@@ -97,7 +99,7 @@ struct MNISTExample {
         print()
 
         // 7. Evaluate
-        let evalMetrics = try await engine.evaluate(model, config: config, data: valLoader)
+        let evalMetrics = try await engine.evaluate(model, configuration: config, data: valLoader)
         print("Evaluation: \(evalMetrics)")
         print()
 

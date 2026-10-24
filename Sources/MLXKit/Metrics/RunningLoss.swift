@@ -13,6 +13,9 @@ import MLX
 /// print(runningLoss.compute()) // e.g. 1.23
 /// ```
 public final class RunningLoss: Metric, @unchecked Sendable {
+    public typealias Output = MLXArray
+    public typealias Target = MLXArray
+
     public let name: String
 
     private var sumLoss: Float = 0
@@ -36,6 +39,10 @@ public final class RunningLoss: Metric, @unchecked Sendable {
     /// The `targets` array's size is used as the batch count.
     public func update(predictions: MLXArray, targets: MLXArray) {
         update(loss: predictions, count: targets.size)
+    }
+
+    public func update(output: MLXArray, target: MLXArray) {
+        update(predictions: output, targets: target)
     }
 
     public func compute() -> Float {

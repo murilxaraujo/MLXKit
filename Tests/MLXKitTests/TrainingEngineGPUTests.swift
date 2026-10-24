@@ -9,10 +9,13 @@ import MLXOptimizers
 
 /// Simple two-layer model for testing.
 private final class TwoLayerModel: Module, TrainableModel {
+    typealias Input = MLXArray
+    typealias Output = MLXArray
+
     let linear1 = Linear(inputDimensions: 2, outputDimensions: 8)
     let linear2 = Linear(inputDimensions: 8, outputDimensions: 1)
 
-    func forward(_ input: MLXArray) -> MLXArray {
+    func callAsFunction(_ input: MLXArray) -> MLXArray {
         var x = linear1(input)
         x = maximum(x, 0) // ReLU
         return linear2(x)
@@ -21,10 +24,13 @@ private final class TwoLayerModel: Module, TrainableModel {
 
 /// Simple classification model for XOR-like problems.
 private final class ClassifierModel: Module, TrainableModel {
+    typealias Input = MLXArray
+    typealias Output = MLXArray
+
     let linear1 = Linear(inputDimensions: 2, outputDimensions: 16)
     let linear2 = Linear(inputDimensions: 16, outputDimensions: 2)
 
-    func forward(_ input: MLXArray) -> MLXArray {
+    func callAsFunction(_ input: MLXArray) -> MLXArray {
         var x = linear1(input)
         x = maximum(x, 0)
         return linear2(x)
@@ -40,20 +46,66 @@ private func makeRegressionDataset(count: Int) -> InMemoryDataset {
 
 @Suite("TrainingEngine fit() (GPU)", .serialized)
 struct TrainingEngineFitGPUTests {
+    @Test func oneBatchUpdateMatchesDirectMLX() async throws {
+        let trainedModel = TwoLayerModel()
+        let directModel = TwoLayerModel()
+        directModel.update(parameters: trainedModel.trainableParameters())
+
+        let inputs = MLXArray([
+            0.25, -0.5,
+            0.75, 0.1,
+            -0.3, 0.8,
+            0.2, 0.4,
+        ] as [Float32]).reshaped([4, 2])
+        let targets = MLXArray([0.1, -0.2, 0.5, 0.3] as [Float32]).reshaped([4, 1])
+        let loader = DataLoader(
+            dataset: InMemoryDataset(features: inputs, labels: targets),
+            batchSize: 4
+        )
+        let engineOptimizer = SGD(learningRate: 0.02)
+        let configuration = TrainingConfiguration(
+            optimizer: engineOptimizer,
+            objective: MSELoss()
+        )
+
+        _ = try await TrainingEngine().fit(
+            trainedModel,
+            configuration: configuration,
+            data: loader,
+            epochs: 1
+        )
+
+        let directOptimizer = SGD(learningRate: 0.02)
+        let directLossAndGrad = valueAndGrad(model: directModel) {
+            (model: TwoLayerModel, features: MLXArray, labels: MLXArray) -> MLXArray in
+            MSELoss()(predictions: model(features), targets: labels)
+        }
+        let (_, gradients) = directLossAndGrad(directModel, inputs, targets)
+        directOptimizer.update(model: directModel, gradients: gradients)
+        eval(directModel, directOptimizer)
+
+        let actual = trainedModel.trainableParameters().flattened()
+        let expected = directModel.trainableParameters().flattened()
+        #expect(actual.keys.sorted() == expected.keys.sorted())
+        for key in actual.keys {
+            let difference = abs(actual[key]! - expected[key]!).max().item(Float.self)
+            #expect(difference < 1e-5)
+        }
+    }
+
     @Test func lossDecreasesOverEpochs() async throws {
         let model = TwoLayerModel()
         let engine = TrainingEngine()
-        let config = engine.compile(
-            model: model,
+        let config = TrainingConfiguration(
             optimizer: Adam(learningRate: 0.01),
-            loss: MSELoss()
+            objective: MSELoss()
         )
 
         let dataset = makeRegressionDataset(count: 200)
         let loader = DataLoader(dataset: dataset, batchSize: 32, shuffle: true)
 
         let history = try await engine.fit(
-            model, config: config, data: loader, epochs: 20
+            model, configuration: config, data: loader, epochs: 20
         )
 
         let losses = history["loss"].compactMap { $0 }
@@ -65,10 +117,9 @@ struct TrainingEngineFitGPUTests {
     @Test func historyContainsMetrics() async throws {
         let model = ClassifierModel()
         let engine = TrainingEngine()
-        let config = engine.compile(
-            model: model,
+        let config = TrainingConfiguration(
             optimizer: Adam(learningRate: 0.01),
-            loss: CrossEntropyLoss(),
+            objective: CrossEntropyLoss(),
             metrics: [Accuracy()]
         )
 
@@ -84,7 +135,7 @@ struct TrainingEngineFitGPUTests {
         let loader = DataLoader(dataset: dataset, batchSize: 4)
 
         let history = try await engine.fit(
-            model, config: config, data: loader, epochs: 5
+            model, configuration: config, data: loader, epochs: 5
         )
 
         #expect(history.epochs.count == 5)
@@ -96,10 +147,9 @@ struct TrainingEngineFitGPUTests {
     @Test func earlyStoppingStopsTraining() async throws {
         let model = TwoLayerModel()
         let engine = TrainingEngine()
-        let config = engine.compile(
-            model: model,
+        let config = TrainingConfiguration(
             optimizer: Adam(learningRate: 0.01),
-            loss: MSELoss()
+            objective: MSELoss()
         )
 
         let dataset = makeRegressionDataset(count: 100)
@@ -113,7 +163,7 @@ struct TrainingEngineFitGPUTests {
         })
 
         let history = try await engine.fit(
-            model, config: config, data: loader,
+            model, configuration: config, data: loader,
             epochs: 100, callbacks: [stopper]
         )
 
@@ -124,10 +174,9 @@ struct TrainingEngineFitGPUTests {
     @Test func validationMetricsAppearWithValPrefix() async throws {
         let model = TwoLayerModel()
         let engine = TrainingEngine()
-        let config = engine.compile(
-            model: model,
+        let config = TrainingConfiguration(
             optimizer: Adam(learningRate: 0.01),
-            loss: MSELoss()
+            objective: MSELoss()
         )
 
         let trainData = makeRegressionDataset(count: 100)
@@ -136,7 +185,7 @@ struct TrainingEngineFitGPUTests {
         let valLoader = DataLoader(dataset: valData, batchSize: 32)
 
         let history = try await engine.fit(
-            model, config: config, data: trainLoader,
+            model, configuration: config, data: trainLoader,
             epochs: 3, validationData: valLoader
         )
 
@@ -150,16 +199,15 @@ struct TrainingEngineEvaluateGPUTests {
     @Test func returnsMetrics() async throws {
         let model = TwoLayerModel()
         let engine = TrainingEngine()
-        let config = engine.compile(
-            model: model,
+        let config = TrainingConfiguration(
             optimizer: Adam(learningRate: 0.01),
-            loss: MSELoss()
+            objective: MSELoss()
         )
 
         let dataset = makeRegressionDataset(count: 50)
         let loader = DataLoader(dataset: dataset, batchSize: 16)
 
-        let metrics = try await engine.evaluate(model, config: config, data: loader)
+        let metrics = try await engine.evaluate(model, configuration: config, data: loader)
         #expect(metrics["loss"] != nil)
     }
 }

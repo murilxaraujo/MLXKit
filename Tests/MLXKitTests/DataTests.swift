@@ -25,5 +25,5 @@ private struct StubDataset: Dataset {
     var features: MLXArray { fatalError("stub") }
     var labels: MLXArray { fatalError("stub") }
     var count: Int { 100 }
-    subscript(index: Int) -> Sample { fatalError("stub") }
+    subscript(index: Int) -> Sample<MLXArray, MLXArray> { fatalError("stub") }
 }

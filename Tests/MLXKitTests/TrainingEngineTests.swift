@@ -9,22 +9,22 @@ struct TrainingConfigurationTests {
     @Test func storesAllComponents() {
         let config = TrainingConfiguration(
             optimizer: Adam(learningRate: 0.001),
-            loss: MSELoss(),
+            objective: MSELoss(),
             metrics: [Accuracy(), MeanSquaredError()],
-            lrSchedule: CosineDecay(initialLR: 0.001, totalSteps: 1000)
+            learningRateSchedule: CosineDecay(initialLR: 0.001, totalSteps: 1000)
         )
         #expect(config.metrics.count == 2)
-        #expect(config.lrSchedule != nil)
+        #expect(config.learningRateSchedule != nil)
     }
 
-    @Test func canBeReplacedByRecompiling() {
+    @Test func configurationsAreIndependentValues() {
         let config1 = TrainingConfiguration(
             optimizer: Adam(learningRate: 0.001),
-            loss: MSELoss()
+            objective: MSELoss()
         )
         let config2 = TrainingConfiguration(
             optimizer: SGD(learningRate: 0.01),
-            loss: CrossEntropyLoss()
+            objective: CrossEntropyLoss()
         )
         // Both configs exist independently
         #expect(config1.metrics.isEmpty)
@@ -34,8 +34,8 @@ struct TrainingConfigurationTests {
 
 @Suite("TrainingError")
 struct TrainingErrorTests {
-    @Test func notCompiledErrorMessage() {
-        let error = TrainingError.notCompiled
-        #expect(error.errorDescription?.contains("compile") == true)
+    @Test func invalidEpochCountHasActionableMessage() {
+        let error = TrainingError.invalidEpochCount(0)
+        #expect(error.errorDescription?.contains("greater than zero") == true)
     }
 }

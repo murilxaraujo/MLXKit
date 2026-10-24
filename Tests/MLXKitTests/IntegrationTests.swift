@@ -11,10 +11,13 @@ import MLXRandom
 
 /// MNIST-like classifier for integration testing.
 private final class TestClassifier: Module, TrainableModel {
+    typealias Input = MLXArray
+    typealias Output = MLXArray
+
     let linear1 = Linear(inputDimensions: 20, outputDimensions: 32)
     let linear2 = Linear(inputDimensions: 32, outputDimensions: 4)
 
-    func forward(_ input: MLXArray) -> MLXArray {
+    func callAsFunction(_ input: MLXArray) -> MLXArray {
         var x = linear1(input)
         x = maximum(x, 0)
         return linear2(x)
@@ -32,12 +35,11 @@ struct IntegrationGPUTests {
     @Test func fullTrainingPipeline() async throws {
         let model = TestClassifier()
         let engine = TrainingEngine()
-        let config = engine.compile(
-            model: model,
+        let config = TrainingConfiguration(
             optimizer: Adam(learningRate: 0.01),
-            loss: CrossEntropyLoss(),
+            objective: CrossEntropyLoss(),
             metrics: [Accuracy()],
-            lrSchedule: CosineDecay(initialLR: 0.01, totalSteps: 200)
+            learningRateSchedule: CosineDecay(initialLR: 0.01, totalSteps: 200)
         )
 
         let trainData = makeSyntheticClassificationData(count: 200)
@@ -47,7 +49,7 @@ struct IntegrationGPUTests {
 
         // fit
         let history = try await engine.fit(
-            model, config: config, data: trainLoader,
+            model, configuration: config, data: trainLoader,
             epochs: 5,
             validationData: valLoader
         )
@@ -72,22 +74,21 @@ struct IntegrationGPUTests {
     @Test func evaluateReturnsReasonableMetrics() async throws {
         let model = TestClassifier()
         let engine = TrainingEngine()
-        let config = engine.compile(
-            model: model,
+        let config = TrainingConfiguration(
             optimizer: Adam(learningRate: 0.01),
-            loss: CrossEntropyLoss(),
+            objective: CrossEntropyLoss(),
             metrics: [Accuracy()]
         )
 
         // Train briefly
         let trainData = makeSyntheticClassificationData(count: 200)
         let trainLoader = DataLoader(dataset: trainData, batchSize: 32, shuffle: true)
-        _ = try await engine.fit(model, config: config, data: trainLoader, epochs: 10)
+        _ = try await engine.fit(model, configuration: config, data: trainLoader, epochs: 10)
 
         // Evaluate
         let evalData = makeSyntheticClassificationData(count: 100)
         let evalLoader = DataLoader(dataset: evalData, batchSize: 32)
-        let metrics = try await engine.evaluate(model, config: config, data: evalLoader)
+        let metrics = try await engine.evaluate(model, configuration: config, data: evalLoader)
 
         #expect(metrics["loss"] != nil)
         #expect(metrics["accuracy"] != nil)
@@ -122,16 +123,15 @@ struct IntegrationGPUTests {
     @Test func checkpointSaveLoadRoundTrip() async throws {
         let model = TestClassifier()
         let engine = TrainingEngine()
-        let config = engine.compile(
-            model: model,
+        let config = TrainingConfiguration(
             optimizer: Adam(learningRate: 0.01),
-            loss: CrossEntropyLoss()
+            objective: CrossEntropyLoss()
         )
 
         // Train briefly
         let trainData = makeSyntheticClassificationData(count: 100)
         let trainLoader = DataLoader(dataset: trainData, batchSize: 32)
-        _ = try await engine.fit(model, config: config, data: trainLoader, epochs: 2)
+        _ = try await engine.fit(model, configuration: config, data: trainLoader, epochs: 2)
 
         // Save checkpoint
         let dir = FileManager.default.temporaryDirectory

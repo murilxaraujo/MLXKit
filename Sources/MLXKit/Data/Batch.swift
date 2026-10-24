@@ -1,30 +1,47 @@
 @preconcurrency import MLX
 
-/// A single data point consisting of input features and a target label.
-public struct Sample: @unchecked Sendable {
-    /// The input features for this sample.
-    public let features: MLXArray
-    /// The target label for this sample.
-    public let labels: MLXArray
+/// A single logical example with typed model input and target values.
+public struct Sample<Input, Target> {
+    public let input: Input
+    public let target: Target
 
-    public init(features: MLXArray, labels: MLXArray) {
-        self.features = features
-        self.labels = labels
+    public init(input: Input, target: Target) {
+        self.input = input
+        self.target = target
     }
 }
 
-/// A batched collection of samples, ready for model consumption.
-public struct Batch: @unchecked Sendable {
-    /// The batched input features with shape `[batchSize, ...]`.
-    public let features: MLXArray
-    /// The batched target labels with shape `[batchSize, ...]`.
-    public let labels: MLXArray
-    /// The number of samples in this batch.
-    public let size: Int
+/// A batch ready for one training or evaluation update.
+public struct Batch<Input, Target> {
+    public let input: Input
+    public let target: Target
+    public let sampleCount: Int
 
-    public init(features: MLXArray, labels: MLXArray, size: Int) {
-        self.features = features
-        self.labels = labels
-        self.size = size
+    public init(input: Input, target: Target, sampleCount: Int) {
+        self.input = input
+        self.target = target
+        self.sampleCount = sampleCount
     }
+}
+
+// The array-backed 1.x data pipeline remains available while M4 replaces it.
+// These conveniences keep its existing Dataset/DataLoader implementation
+// source-compatible internally without restricting the 2.0 batch contract.
+extension Sample where Input == MLXArray, Target == MLXArray {
+    public init(features: MLXArray, labels: MLXArray) {
+        self.init(input: features, target: labels)
+    }
+
+    public var features: MLXArray { input }
+    public var labels: MLXArray { target }
+}
+
+extension Batch where Input == MLXArray, Target == MLXArray {
+    public init(features: MLXArray, labels: MLXArray, size: Int) {
+        self.init(input: features, target: labels, sampleCount: size)
+    }
+
+    public var features: MLXArray { input }
+    public var labels: MLXArray { target }
+    public var size: Int { sampleCount }
 }
