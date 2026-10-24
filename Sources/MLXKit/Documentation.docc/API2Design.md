@@ -8,7 +8,8 @@ the current M2 engine consumes asynchronous sequences of already-built typed
 
 Detailed contract notes are in <doc:M1ModelContract>,
 <doc:M1ObjectiveMetricContract>, <doc:M1TrainingWorkflow>, and
-<doc:M1DataContract>.
+<doc:M1DataContract>. Custom-model parameter and inference-cache boundaries are
+described in <doc:CustomModelState>.
 
 ## Design principles
 
