@@ -127,3 +127,5 @@ decided in their respective milestones.
 - <doc:M1ModelContract> records the approved model-contract direction for M1.
   The integrated API design and migration map remain in progress; this is not
   the final 2.0 API promise.
+- <doc:M1ObjectiveMetricContract> records the pair-approved objective/metric
+  direction while implementation semantics remain assigned to M2.
