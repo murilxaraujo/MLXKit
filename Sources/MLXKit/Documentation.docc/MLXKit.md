@@ -31,10 +31,15 @@ let history = try await engine.fit(
 ### Essentials
 
 - <doc:ProductScope>
+- <doc:API2Design>
 - <doc:MLXKitAndMLX>
 - <doc:PlatformSupport>
 - <doc:CompatibilityPolicy>
 - <doc:ReferenceWorkloads>
+- <doc:M1ModelContract>
+- <doc:M1ObjectiveMetricContract>
+- <doc:M1TrainingWorkflow>
+- <doc:M1DataContract>
 - <doc:GettingStarted>
 - <doc:Architecture>
 

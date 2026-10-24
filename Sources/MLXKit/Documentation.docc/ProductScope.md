@@ -121,3 +121,16 @@ decided in their respective milestones.
 - <doc:PlatformSupport> defines the tested platform and backend baseline.
 - <doc:CompatibilityPolicy> defines pre-2.0 and 2.0 compatibility promises.
 - <doc:ReferenceWorkloads> defines the workloads and validation method for M8.
+
+## M1 design work
+
+- <doc:API2Design> integrates the M1 contracts and 1.x-to-2.0 migration map.
+- <doc:M1ModelContract> records the approved model-contract direction for M1.
+  The integrated API design and migration map remain in progress; this is not
+  the final 2.0 API promise.
+- <doc:M1ObjectiveMetricContract> records the pair-approved objective/metric
+  direction while implementation semantics remain assigned to M2.
+- <doc:M1TrainingWorkflow> records the pair-approved training-step,
+  optimizer/schedule, callback, and cancellation boundaries.
+- <doc:M1DataContract> records the pair-approved sample, collation, streaming,
+  shuffle, and bounded-prefetch boundaries.
