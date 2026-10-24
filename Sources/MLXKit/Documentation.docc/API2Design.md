@@ -200,6 +200,13 @@ optimizers may conform. A schedule paired with an optimizer that lacks this
 capability fails clearly before training. MLXKit supplies schedules, not a
 parallel optimizer implementation.
 
+The M2 adapters cover SGD, RMSprop, AdaGrad, AdaDelta, Adam/AdamW, Adamax,
+Lion, Adafactor, and Muon. `MultiOptimizer` is not adaptable as a single rate
+because its children can use different optimizers; users can schedule its
+children directly or provide a custom optimizer that implements the capability.
+For Adafactor, configuring a schedule switches off its default relative-rate
+mode so the supplied rate is effective.
+
 ```swift
 public protocol LearningRateControllable: Optimizer {
     func setLearningRate(_ value: Float) throws

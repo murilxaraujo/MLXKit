@@ -95,6 +95,16 @@ public final class TrainingEngine: @unchecked Sendable {
         }
         try validateMetricNames(configuration.metrics)
 
+        let learningRateController: (any LearningRateControllable)?
+        if configuration.learningRateSchedule != nil {
+            guard let controller = configuration.optimizer as? any LearningRateControllable else {
+                throw TrainingError.unsupportedLearningRateSchedule
+            }
+            learningRateController = controller
+        } else {
+            learningRateController = nil
+        }
+
         let history = History()
         let callbackList = CallbackList([history] + callbacks)
         let state = TrainingState()
@@ -137,7 +147,7 @@ public final class TrainingEngine: @unchecked Sendable {
 
                 if let schedule = configuration.learningRateSchedule {
                     let learningRate = schedule.learningRate(atStep: globalStep)
-                    setLearningRate(configuration.optimizer, learningRate)
+                    try learningRateController?.setLearningRate(learningRate)
                 }
 
                 callbackList.onBatchBegin(state: state)
@@ -165,6 +175,7 @@ public final class TrainingEngine: @unchecked Sendable {
 
                 configuration.optimizer.update(model: model, gradients: gradients)
                 eval(model, configuration.optimizer)
+                globalStep += 1
 
                 state.logs["loss"] = scalarLoss
                 callbackList.onBatchEnd(state: state)
@@ -173,7 +184,6 @@ public final class TrainingEngine: @unchecked Sendable {
                     break
                 }
                 batchIndex += 1
-                globalStep += 1
             }
 
             guard batchIndex > 0 || state.shouldStop else {
@@ -309,25 +319,6 @@ public final class TrainingEngine: @unchecked Sendable {
         return outputs
     }
 
-    private func setLearningRate(_ optimizer: any Optimizer, _ learningRate: Float) {
-        if let sgd = optimizer as? SGD {
-            sgd.learningRate = learningRate
-        } else if let adam = optimizer as? Adam {
-            adam.learningRate = learningRate
-        } else if let adamax = optimizer as? Adamax {
-            adamax.learningRate = learningRate
-        } else if let adaGrad = optimizer as? AdaGrad {
-            adaGrad.learningRate = learningRate
-        } else if let adaDelta = optimizer as? AdaDelta {
-            adaDelta.learningRate = learningRate
-        } else if let rmsProp = optimizer as? RMSprop {
-            rmsProp.learningRate = learningRate
-        } else if let lion = optimizer as? Lion {
-            lion.learningRate = learningRate
-        } else if let adafactor = optimizer as? Adafactor {
-            adafactor.learningRate = learningRate
-        }
-    }
 }
 
 private struct EmptyBatchSequence<Element>: AsyncSequence {

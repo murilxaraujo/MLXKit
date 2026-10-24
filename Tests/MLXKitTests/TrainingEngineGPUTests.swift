@@ -71,6 +71,15 @@ private final class MeanOutputMetric: Metric {
     }
 }
 
+private final class RecordingLearningRateSchedule: LRSchedule, @unchecked Sendable {
+    private(set) var steps: [Int] = []
+
+    func learningRate(atStep step: Int) -> Float {
+        steps.append(step)
+        return Float(step + 1) * 0.001
+    }
+}
+
 /// Creates a simple regression dataset: y = x0 + x1
 private func makeRegressionDataset(count: Int) -> InMemoryDataset {
     let features = MLXRandom.uniform(low: -1.0, high: 1.0, [count, 2])
@@ -80,6 +89,59 @@ private func makeRegressionDataset(count: Int) -> InMemoryDataset {
 
 @Suite("TrainingEngine fit() (GPU)", .serialized)
 struct TrainingEngineFitGPUTests {
+    @Test func scheduleStartsAtZeroAndAdvancesAfterSuccessfulUpdates() async throws {
+        let model = ScalarLinearModel()
+        let inputs = MLXArray([1.0, 2.0, 3.0] as [Float32]).reshaped([3, 1])
+        let targets = MLXArray.zeros([3, 1])
+        let loader = DataLoader(
+            dataset: InMemoryDataset(features: inputs, labels: targets),
+            batchSize: 2
+        )
+        let optimizer = SGD(learningRate: 0.5)
+        let schedule = RecordingLearningRateSchedule()
+        let configuration = TrainingConfiguration(
+            optimizer: optimizer,
+            objective: MSELoss(),
+            learningRateSchedule: schedule
+        )
+
+        _ = try await TrainingEngine().fit(
+            model,
+            configuration: configuration,
+            data: loader,
+            epochs: 1
+        )
+
+        #expect(schedule.steps == [0, 1])
+        #expect(optimizer.learningRate == 0.002)
+    }
+
+    @Test func evaluationDoesNotReadScheduleOrMutateLearningRate() async throws {
+        let model = ScalarLinearModel()
+        let inputs = MLXArray([1.0, 2.0] as [Float32]).reshaped([2, 1])
+        let targets = MLXArray.zeros([2, 1])
+        let loader = DataLoader(
+            dataset: InMemoryDataset(features: inputs, labels: targets),
+            batchSize: 2
+        )
+        let optimizer = SGD(learningRate: 0.5)
+        let schedule = RecordingLearningRateSchedule()
+        let configuration = TrainingConfiguration(
+            optimizer: optimizer,
+            objective: MSELoss(),
+            learningRateSchedule: schedule
+        )
+
+        _ = try await TrainingEngine().evaluate(
+            model,
+            configuration: configuration,
+            data: loader
+        )
+
+        #expect(schedule.steps.isEmpty)
+        #expect(optimizer.learningRate == 0.5)
+    }
+
     @Test func epochLossWeightsScalarBatchObjectivesBySampleCount() async throws {
         let model = ScalarLinearModel()
         let inputs = MLXArray([1.0, 1.0, 10.0] as [Float32]).reshaped([3, 1])

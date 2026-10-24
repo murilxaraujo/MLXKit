@@ -29,6 +29,7 @@ public enum TrainingError: Error, LocalizedError, Equatable {
     case emptyTrainingData
     case emptyEvaluationData
     case invalidSampleCount(Int)
+    case invalidLearningRate(Float)
     case nonScalarObjective(shape: [Int])
     case metricNameCollision(String)
     case unsupportedLearningRateSchedule
@@ -45,6 +46,8 @@ public enum TrainingError: Error, LocalizedError, Equatable {
             "Evaluation data produced no batches."
         case .invalidSampleCount(let count):
             "Batch sampleCount must be greater than zero; received \(count)."
+        case .invalidLearningRate(let value):
+            "Learning rate must be finite and nonnegative; received \(value)."
         case .nonScalarObjective(let shape):
             "Training objective must be scalar; received shape \(shape). Reduce the objective explicitly."
         case .metricNameCollision(let name):

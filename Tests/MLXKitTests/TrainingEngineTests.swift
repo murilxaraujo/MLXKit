@@ -52,6 +52,10 @@ private struct FixedBatches<Element>: AsyncSequence {
     }
 }
 
+private struct FixedLearningRateSchedule: LRSchedule {
+    func learningRate(atStep step: Int) -> Float { 0.01 }
+}
+
 @Suite("TrainingConfiguration")
 struct TrainingConfigurationTests {
     @Test func storesAllComponents() {
@@ -85,6 +89,26 @@ struct TrainingErrorTests {
     @Test func invalidEpochCountHasActionableMessage() {
         let error = TrainingError.invalidEpochCount(0)
         #expect(error.errorDescription?.contains("greater than zero") == true)
+    }
+
+    @Test func unsupportedScheduledOptimizerFailsBeforeDataIteration() async throws {
+        let configuration = TrainingConfiguration(
+            optimizer: MultiOptimizer(optimizers: [SGD(learningRate: 0.1)]),
+            objective: ClosureObjective<Int, Int> { _, _ in MLXArray(0) },
+            learningRateSchedule: FixedLearningRateSchedule()
+        )
+
+        do {
+            _ = try await TrainingEngine().fit(
+                IntegerModel(),
+                configuration: configuration,
+                data: EmptyBatches<Batch<Int, Int>>(),
+                epochs: 1
+            )
+            Issue.record("Expected unsupported scheduled optimizer to be rejected")
+        } catch let error as TrainingError {
+            #expect(error == .unsupportedLearningRateSchedule)
+        }
     }
 
     @Test func duplicateMetricNamesFailBeforeTraining() async throws {
