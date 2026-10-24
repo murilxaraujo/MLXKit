@@ -44,8 +44,8 @@ struct IntegrationGPUTests {
 
         let trainData = makeSyntheticClassificationData(count: 200)
         let valData = makeSyntheticClassificationData(count: 50)
-        let trainLoader = DataLoader(dataset: trainData, batchSize: 32, shuffle: true)
-        let valLoader = DataLoader(dataset: valData, batchSize: 32)
+        let trainLoader = try DataLoader(source: trainData, batchSize: 32, shuffle: .full(seed: 42))
+        let valLoader = try DataLoader(source: valData, batchSize: 32)
 
         // fit
         let history = try await engine.fit(
@@ -82,12 +82,12 @@ struct IntegrationGPUTests {
 
         // Train briefly
         let trainData = makeSyntheticClassificationData(count: 200)
-        let trainLoader = DataLoader(dataset: trainData, batchSize: 32, shuffle: true)
+        let trainLoader = try DataLoader(source: trainData, batchSize: 32, shuffle: .full(seed: 42))
         _ = try await engine.fit(model, configuration: config, data: trainLoader, epochs: 10)
 
         // Evaluate
         let evalData = makeSyntheticClassificationData(count: 100)
-        let evalLoader = DataLoader(dataset: evalData, batchSize: 32)
+        let evalLoader = try DataLoader(source: evalData, batchSize: 32)
         let metrics = try await engine.evaluate(model, configuration: config, data: evalLoader)
 
         #expect(metrics["loss"] != nil)
@@ -130,7 +130,7 @@ struct IntegrationGPUTests {
 
         // Train briefly
         let trainData = makeSyntheticClassificationData(count: 100)
-        let trainLoader = DataLoader(dataset: trainData, batchSize: 32)
+        let trainLoader = try DataLoader(source: trainData, batchSize: 32)
         _ = try await engine.fit(model, configuration: config, data: trainLoader, epochs: 2)
 
         // Save checkpoint

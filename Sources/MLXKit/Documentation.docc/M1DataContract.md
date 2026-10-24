@@ -58,7 +58,7 @@ source to participate in training.
 Batching custom data uses a throwing collate closure:
 
 ```swift
-let batches = DataLoader(source: source, batchSize: 32, dropLast: false) { samples in
+let batches = try DataLoader(source: source, batchSize: 32, dropLast: false) { samples in
     Batch(
         input: EncoderInput(
             tokenIDs: stack(samples.map { $0.input.tokenIDs }),
@@ -81,16 +81,24 @@ sample type may be batched differently for padding, bucketing, multi-view
 training, or evaluation. An explicit collate closure keeps that choice at the
 pipeline call site and avoids another global structural protocol.
 
-Batch size, incomplete-final-batch handling, ordering of mapping/filtering/
-batching, and the exact collate-error diagnostics are configured at the
-pipeline boundary. M4 owns their precise runtime semantics and tests.
+`DataLoader` validates a positive batch size at construction. It emits no batch
+for an empty source, emits a smaller final batch when `dropLast` is `false`, and
+discards that final partial batch when `dropLast` is `true`. It verifies that a
+collator's `sampleCount` equals the actual number of supplied samples; a
+mismatch throws `DataLoaderError.collatedSampleCountMismatch` rather than
+emitting an inaccurate batch.
+
+Sample transforms are explicit and ordered in the source sequence, for example
+`source.map(...).filter(...)`. The loader then applies its shuffle strategy and
+batches the resulting samples. Collation and transform errors propagate from
+the loader's throwing asynchronous iteration.
 
 ## In-memory and streaming examples
 
 The usual array-backed classifier remains concise:
 
 ```swift
-let trainingBatches = DataLoader(
+let trainingBatches = try DataLoader(
     source: InMemoryDataset(inputs: imageArrays, targets: classIDs),
     batchSize: 32,
     shuffle: .full(seed: 42),
@@ -109,7 +117,7 @@ let preparedSamples = stream
     .map(normalizeTokens)
     .filter(isUsable)
 
-let trainingBatches = DataLoader(
+let trainingBatches = try DataLoader(
     source: preparedSamples,
     batchSize: 32,
     shuffle: .buffered(windowSize: 512, seed: 42),
@@ -126,18 +134,20 @@ prefetch has a visible finite bound.
 
 Random access is optional, so shuffle policy is explicit:
 
-- Indexed sources can use a full seeded permutation without loading or
-  reshuffling tensor data.
+- Indexed sources can use a full seeded permutation of indices without copying
+  or reshuffling tensor data. An unshuffled indexed source does not allocate a
+  permutation.
 - Streaming sources use a bounded seeded shuffle buffer/window. This is an
   approximate streaming shuffle; it must not silently read the entire stream
   into memory.
-- A seed is user-configurable. M4 documents the reproducibility scope,
-  including source order, seed, implementation/version, and limits across
-  devices or releases.
+- The same source order, seed, and implementation version produce the same
+  order. Cross-version and cross-device identity is not promised.
 
-The pipeline makes shuffle position relative to mapping, filtering, and batching
-visible. M4 defines ordering guarantees and verifies them with deterministic
-tests.
+Both strategies shuffle samples before batching. For a stream, the bounded
+window is filled before the first sample is emitted; each later sample replaces
+one selected window entry. `full(seed:)` is rejected for a non-indexed async
+source before the source is read. Deterministic tests verify ordering,
+cardinality, and the streaming read bound.
 
 ## Cancellation, errors, and prefetch
 
@@ -152,8 +162,9 @@ tests.
 - Unknown length is valid. APIs expose counts only when the source can provide
   them; training must not require `totalBatches` to be known.
 
-M4 defines exact error types, cancellation checkpoints, buffer bounds,
-backpressure behavior, and cleanup guarantees.
+M4 issue #23 defines batching/shuffle configuration errors and source ordering.
+Bounded prefetch, cancellation cleanup, and backpressure details are implemented
+in the separate M4 prefetch issue.
 
 ## Alternatives and rationale
 

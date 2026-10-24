@@ -70,8 +70,8 @@ struct TinyDecoderGPUTests {
         directOptimizer.update(model: directModel, gradients: gradients)
         eval(directModel, directOptimizer)
 
-        let batches = DataLoader(
-            dataset: InMemoryDataset(features: inputs, labels: targets),
+        let batches = try DataLoader(
+            source: InMemoryDataset(features: inputs, labels: targets),
             batchSize: inputs.dim(0)
         )
         let engineOptimizer = SGD(learningRate: 0.01)

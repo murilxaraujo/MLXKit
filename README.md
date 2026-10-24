@@ -57,7 +57,11 @@ let config = TrainingConfiguration(
 )
 
 // 3. Train
-let loader = DataLoader(dataset: trainData, batchSize: 32, shuffle: true)
+let loader = try DataLoader(
+    source: trainData,
+    batchSize: 32,
+    shuffle: .full(seed: 42)
+)
 let history = try await engine.fit(
     model, configuration: config, data: loader,
     epochs: 10,
@@ -82,7 +86,7 @@ let info = try Checkpointing.load(into: restoredModel, from: checkpointURL)
 | **Losses** | CrossEntropy, BCE, MSE, L1, Huber, KLDiv with configurable reduction |
 | **Metrics** | Accuracy, TopK, MSE, and MAE with batch accumulation; `RunningLoss` is a standalone helper |
 | **Callbacks** | EarlyStopping, ModelCheckpoint, ProgressReporter, Lambda |
-| **Data** | `Dataset` protocol, `InMemoryDataset`, `AsyncSequence`-based `DataLoader` |
+| **Data** | Typed indexed/async sample sources, composable transforms, seeded shuffle, and batched `DataLoader` |
 | **LR Schedules** | CosineDecay, StepDecay, ExponentialDecay, composable Warmup |
 | **Serialization** | Weight save/load and full checkpoint (model + epoch + metadata) via safetensors |
 | **Utilities** | `model.printSummary()` with tabular param counts and memory estimates |

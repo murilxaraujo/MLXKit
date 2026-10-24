@@ -64,7 +64,7 @@ let config = TrainingConfiguration(
 
 // Create a data loader
 let dataset = InMemoryDataset(features: trainFeatures, labels: trainLabels)
-let loader = DataLoader(dataset: dataset, batchSize: 32, shuffle: true)
+let loader = try DataLoader(source: dataset, batchSize: 32, shuffle: .full(seed: 42))
 
 // Train
 let history = try await engine.fit(
