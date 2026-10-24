@@ -27,6 +27,16 @@ cross-entropy over next-token logits. The example uses the typed model contract
 with `MLXArray` token inputs and logits, builds typed `Batch<MLXArray, MLXArray>`
 values, and passes a re-iterable asynchronous sequence to `TrainingEngine`.
 
+The decoder implementation lives in the example's internal `TinyDecoderCore`
+target. Its `TinyDecoder` conforms to `TrainableModel`, and
+`NextTokenObjective` conforms to `Objective<MLXArray, MLXArray>`. The batch
+sequence pairs each token row with the same row shifted left by one position.
+`TrainingEngine` supplies each model output and its corresponding target to the
+objective, then owns gradient calculation and optimizer updates. The GPU test
+suite checks causal masking, finite gradients, parameter updates, and parity
+with a direct MLX update. The parity assertion uses an absolute per-parameter
+tolerance of `1e-5` on the fixed test fixture.
+
 Training processes each complete sequence with a causal attention mask. It does
 not share mutable inference-cache state across differentiable forward passes.
 The example does not add a cache API; its fixed fixture and model are local to

@@ -63,9 +63,9 @@ final class DecoderBlock: Module {
     }
 }
 
-final class TinyDecoder: Module, TrainableModel {
-    typealias Input = MLXArray
-    typealias Output = MLXArray
+public final class TinyDecoder: Module, TrainableModel {
+    public typealias Input = MLXArray
+    public typealias Output = MLXArray
 
     @ModuleInfo private var tokenEmbedding: Embedding
     @ModuleInfo private var positionEmbedding: Embedding
@@ -73,7 +73,7 @@ final class TinyDecoder: Module, TrainableModel {
     @ModuleInfo private var finalNorm: LayerNorm
     private let maximumSequenceLength: Int
 
-    init(vocabularySize: Int, width: Int, headCount: Int, maximumSequenceLength: Int) {
+    public init(vocabularySize: Int, width: Int, headCount: Int, maximumSequenceLength: Int) {
         precondition(vocabularySize > 1)
         precondition(width > 0 && width % headCount == 0)
         precondition(maximumSequenceLength > 0)
@@ -85,7 +85,7 @@ final class TinyDecoder: Module, TrainableModel {
         super.init()
     }
 
-    func callAsFunction(_ tokenIDs: MLXArray) -> MLXArray {
+    public func callAsFunction(_ tokenIDs: MLXArray) -> MLXArray {
         let sequenceLength = tokenIDs.dim(1)
         precondition(sequenceLength <= maximumSequenceLength, "Input sequence exceeds configured length")
 
@@ -96,11 +96,13 @@ final class TinyDecoder: Module, TrainableModel {
     }
 }
 
-struct NextTokenObjective: Objective {
-    typealias Output = MLXArray
-    typealias Target = MLXArray
+public struct NextTokenObjective: Objective {
+    public typealias Output = MLXArray
+    public typealias Target = MLXArray
 
-    func callAsFunction(output: MLXArray, target: MLXArray) -> MLXArray {
+    public init() {}
+
+    public func callAsFunction(output: MLXArray, target: MLXArray) -> MLXArray {
         MLXNN.crossEntropy(logits: output, targets: target, reduction: .mean)
     }
 }

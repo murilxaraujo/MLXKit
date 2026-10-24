@@ -2,6 +2,7 @@ import Foundation
 import MLX
 import MLXOptimizers
 import MLXKit
+import TinyDecoderCore
 
 private struct ExampleOptions {
     var vocabularySize = 16

@@ -46,13 +46,21 @@ let package = Package(
             name: "MNISTExample",
             dependencies: ["MLXKit"]
         ),
+        .target(
+            name: "TinyDecoderCore",
+            dependencies: [
+                "MLXKit",
+                .product(name: "MLX", package: "mlx-swift"),
+                .product(name: "MLXNN", package: "mlx-swift"),
+            ]
+        ),
         .executableTarget(
             name: "TinyDecoderExample",
-            dependencies: ["MLXKit"]
+            dependencies: ["MLXKit", "TinyDecoderCore"]
         ),
         .testTarget(
             name: "MLXKitTests",
-            dependencies: ["MLXKit"],
+            dependencies: ["MLXKit", "TinyDecoderCore"],
             swiftSettings: enableGPUTests ? [.define("MLX_GPU_TESTS")] : []
         ),
     ]
