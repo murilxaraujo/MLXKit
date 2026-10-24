@@ -121,3 +121,9 @@ decided in their respective milestones.
 - <doc:PlatformSupport> defines the tested platform and backend baseline.
 - <doc:CompatibilityPolicy> defines pre-2.0 and 2.0 compatibility promises.
 - <doc:ReferenceWorkloads> defines the workloads and validation method for M8.
+
+## M1 design work
+
+- <doc:M1ModelContract> records the approved model-contract direction for M1.
+  The integrated API design and migration map remain in progress; this is not
+  the final 2.0 API promise.
