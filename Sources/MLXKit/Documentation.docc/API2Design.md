@@ -1,18 +1,20 @@
 # MLXKit 2.0 Public API Design
 
 **Status:** integrated M1 design and M2/M4 implementation record, with M5
-gradient processing and accumulation implemented. The typed training,
-objective/metric, schedule, lifecycle, gradient-processing, accumulation, and
-sample-to-batch contracts described here are implemented. The training engine
-continues to consume asynchronous sequences of already-built typed ``Batch``
-values. This page is not a final 2.0 compatibility promise.
+gradient processing, accumulation, and weighted cross entropy implemented. The
+typed training, objective/metric, schedule, lifecycle, gradient-processing,
+accumulation, weighted-loss, and sample-to-batch contracts described here are
+implemented. The training engine continues to consume asynchronous sequences
+of already-built typed ``Batch`` values. This page is not a final 2.0
+compatibility promise.
 
 Detailed contract notes are in <doc:M1ModelContract>,
 <doc:M1ObjectiveMetricContract>, <doc:M1TrainingWorkflow>, and
 <doc:M1DataContract>. Custom-model parameter and inference-cache boundaries are
 described in <doc:CustomModelState>. The M5 training-control contract is
-recorded in <doc:M5TrainingControlSemantics>; weighted cross entropy remains
-planned.
+recorded in <doc:M5TrainingControlSemantics>, including the explicit
+`CrossEntropyLoss.weightedMean(predictions:targets:sampleWeights:classWeights:)`
+operation.
 
 ## Design principles
 

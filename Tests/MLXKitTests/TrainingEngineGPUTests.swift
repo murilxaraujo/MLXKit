@@ -163,6 +163,45 @@ private struct BatchSequence: AsyncSequence {
     }
 }
 
+private struct WeightedClassificationTarget {
+    let labels: MLXArray
+    let sampleWeights: MLXArray
+    let classWeights: MLXArray
+}
+
+private struct WeightedClassificationBatchSequence: AsyncSequence {
+    typealias Element = Batch<MLXArray, WeightedClassificationTarget>
+    typealias Failure = Never
+
+    let batches: [Element]
+
+    func makeAsyncIterator() -> Iterator { Iterator(batches: batches) }
+
+    struct Iterator: AsyncIteratorProtocol {
+        typealias Element = Batch<MLXArray, WeightedClassificationTarget>
+
+        let batches: [Element]
+        var offset = 0
+
+        mutating func next() async -> Element? {
+            guard offset < batches.count else { return nil }
+            defer { offset += 1 }
+            return batches[offset]
+        }
+    }
+}
+
+private final class LogitScaleModel: Module, TrainableModel {
+    typealias Input = MLXArray
+    typealias Output = MLXArray
+
+    let scale = MLXArray(Float32(1))
+
+    func callAsFunction(_ input: MLXArray) -> MLXArray {
+        input * scale
+    }
+}
+
 private func regressionBatch(_ values: [Float32]) -> Batch<MLXArray, MLXArray> {
     let inputs = MLXArray(values).reshaped([values.count, 1])
     return Batch(input: inputs, target: MLXArray.zeros([values.count, 1]), sampleCount: values.count)
@@ -176,6 +215,127 @@ private final class CancelAtBatchEnd: Callback {
 
 @Suite("TrainingEngine fit() (GPU)", .serialized)
 struct TrainingEngineFitGPUTests {
+    @Test func invalidWeightedCrossEntropySkipsOptimizerUpdate() async throws {
+        let loss = CrossEntropyLoss()
+        let batch = Batch(
+            input: MLXArray([2.0, -1.0, 0.5] as [Float32]).reshaped([1, 3]),
+            target: WeightedClassificationTarget(
+                labels: MLXArray([0] as [Int32]),
+                sampleWeights: MLXArray([-1.0] as [Float32]),
+                classWeights: MLXArray([1.0, 1.0, 1.0] as [Float32])
+            ),
+            sampleCount: 1
+        )
+        let optimizer = RecordingGradientOptimizer()
+        let objective = ClosureObjective<MLXArray, WeightedClassificationTarget> { output, target in
+            loss.weightedMean(
+                predictions: output,
+                targets: target.labels,
+                sampleWeights: target.sampleWeights,
+                classWeights: target.classWeights
+            )
+        }
+        let configuration = TrainingConfiguration(optimizer: optimizer, objective: objective)
+        let step: TrainingStep<LogitScaleModel, WeightedClassificationTarget> = { model, batch in
+            loss.weightedMean(
+                predictions: model(batch.input),
+                targets: batch.target.labels,
+                sampleWeights: batch.target.sampleWeights,
+                classWeights: batch.target.classWeights
+            )
+        }
+
+        do {
+            _ = try await TrainingEngine().fit(
+                LogitScaleModel(),
+                configuration: configuration,
+                data: WeightedClassificationBatchSequence(batches: [batch]),
+                epochs: 1,
+                trainingStep: step
+            )
+            Issue.record("Invalid weights must fail before an optimizer update")
+        } catch let error as TrainingError {
+            #expect(error == .nonFiniteObjective)
+        }
+
+        #expect(optimizer.receivedGradients.isEmpty)
+    }
+
+    @Test func weightedCrossEntropyFitAndEvaluateAgreeAcrossUnevenBatches() async throws {
+        let loss = CrossEntropyLoss(labelSmoothing: 0.1)
+        let classWeights = MLXArray([1.2, 0.4, 2.5] as [Float32])
+        let batches = WeightedClassificationBatchSequence(batches: [
+            Batch(
+                input: MLXArray([2.0, -1.0, 0.5, 1.0, 3.0, -0.5] as [Float32]).reshaped([2, 3]),
+                target: WeightedClassificationTarget(
+                    labels: MLXArray([0, 2] as [Int32]),
+                    sampleWeights: MLXArray([0.5, 2.0] as [Float32]),
+                    classWeights: classWeights
+                ),
+                sampleCount: 2
+            ),
+            Batch(
+                input: MLXArray([-0.2, 0.7, 1.4] as [Float32]).reshaped([1, 3]),
+                target: WeightedClassificationTarget(
+                    labels: MLXArray([1] as [Int32]),
+                    sampleWeights: MLXArray([1.5] as [Float32]),
+                    classWeights: classWeights
+                ),
+                sampleCount: 1
+            ),
+        ])
+        let weightedStep: TrainingStep<LogitScaleModel, WeightedClassificationTarget> = { model, batch in
+            loss.weightedMean(
+                predictions: model(batch.input),
+                targets: batch.target.labels,
+                sampleWeights: batch.target.sampleWeights,
+                classWeights: batch.target.classWeights
+            )
+        }
+        let objective = ClosureObjective<MLXArray, WeightedClassificationTarget> { output, target in
+            loss.weightedMean(
+                predictions: output,
+                targets: target.labels,
+                sampleWeights: target.sampleWeights,
+                classWeights: target.classWeights
+            )
+        }
+        let configuration = TrainingConfiguration(
+            optimizer: RecordingGradientOptimizer(),
+            objective: objective
+        )
+        let model = LogitScaleModel()
+        let engine = TrainingEngine()
+
+        let history = try await engine.fit(
+            model,
+            configuration: configuration,
+            data: batches,
+            epochs: 1,
+            trainingStep: weightedStep
+        )
+        let evaluation = try await engine.evaluate(
+            model,
+            configuration: configuration,
+            data: batches,
+            trainingStep: weightedStep
+        )
+        let expected = loss.weightedMean(
+            predictions: MLXArray([
+                2.0, -1.0, 0.5,
+                1.0, 3.0, -0.5,
+                -0.2, 0.7, 1.4,
+            ] as [Float32]).reshaped([3, 3]),
+            targets: MLXArray([0, 2, 1] as [Int32]),
+            sampleWeights: MLXArray([0.5, 2.0, 1.5] as [Float32]),
+            classWeights: classWeights
+        ).item(Float.self)
+
+        #expect(history.epochs.count == 1)
+        #expect(abs((history.epochs[0]["loss"] ?? .nan) - expected) < 1e-5)
+        #expect(abs((evaluation["loss"] ?? .nan) - expected) < 1e-5)
+    }
+
     @Test func sampleAwareAccumulationMatchesCombinedBatchMeanForEqualAndUnevenMicrobatches() async throws {
         let microbatchExamples: [[[Float32]]] = [
             [[1], [2]],

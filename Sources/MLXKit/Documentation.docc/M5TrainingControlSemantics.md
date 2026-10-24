@@ -1,8 +1,8 @@
 # M5 Training-Control Semantics
 
-**Status:** Gradient transforms, global-norm clipping, and sample-aware
-accumulation are implemented. Weighted cross entropy remains planned. This page
-extends the implemented behavior in <doc:M2TrainingSemantics>.
+**Status:** Gradient transforms, global-norm clipping, sample-aware
+accumulation, and weighted cross entropy are implemented. This page extends the
+implemented behavior in <doc:M2TrainingSemantics>.
 
 MLXKit continues to coordinate training. MLX owns tensor operations and
 autodiff, and MLXOptimizers owns optimizer algorithms and state. The engine
@@ -177,8 +177,10 @@ probability-target, or otherwise non-matching layouts are not inferred or
 silently reshaped by the engine. A caller can express those objectives with an
 explicit custom objective or ``TrainingStep``.
 
-For per-example cross entropy `loss_i`, sample weight `s_i` (default `1`), and
-class weight `c_yi` for target class `y_i` (default `1`), the weighted mean is:
+`CrossEntropyLoss.weightedMean(predictions:targets:sampleWeights:classWeights:)`
+implements the explicit weighted operation. For per-example cross entropy
+`loss_i`, sample weight `s_i` (default `1`), and class weight `c_yi` for target
+class `y_i` (default `1`), the weighted mean is:
 
 ```text
 batchObjective = sum_i(s_i * c_yi * loss_i) / sampleCount
@@ -198,10 +200,18 @@ label-smoothing calculation. The weighted built-in path is a scalar mean;
 weighted `.sum` and `.none` modes are not part of this contract. Without
 weights, existing `CrossEntropyLoss` reductions remain unchanged.
 
-The loss operation should accept weights explicitly. For example, if
-per-sample weights are carried alongside labels in a user-defined batch target,
-a `TrainingStep` can pass them to the built-in weighted cross-entropy operation.
-The engine does not inspect arbitrary target values to discover weights.
+The operation validates the supported ranks and dimensions before the loss
+calculation. Invalid weight shapes or values produce a non-finite objective;
+`fit` and `evaluate` reject that objective, and `fit` does not apply an
+optimizer update for it. The operation requires logits shaped `[batch,
+classes]` and integer targets shaped `[batch]`; token-level, structured,
+probability-target, and other layouts require an explicit custom operation.
+
+The loss operation accepts weights explicitly. For example, if per-sample
+weights are carried alongside labels in a user-defined batch target, a
+`TrainingStep` can pass them to `weightedMean`. Use the same `TrainingStep` with
+`fit` and `evaluate` to preserve objective semantics in both paths. The engine
+does not inspect arbitrary target values to discover weights.
 Arbitrary `Objective` and `TrainingStep` implementations remain responsible
 for their own weighting, and metrics remain unweighted unless their own API
 states otherwise.
