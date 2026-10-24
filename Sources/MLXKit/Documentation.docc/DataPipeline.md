@@ -4,7 +4,7 @@ MLXKit converts typed samples into typed batches. `DataLoader` accepts an
 indexed collection or an asynchronous sample sequence. It applies sample
 transforms first, shuffle second, and batching/collation last. The resulting
 `AsyncSequence<Batch<Input, Target>>` works with the existing
-``TrainingEngine/fit(_:configuration:data:epochs:trainingStep:callbacks:)`` and
+``TrainingEngine/fit(_:configuration:data:epochs:resumeFrom:trainingStep:callbacks:)`` and
 ``TrainingEngine/evaluate(_:configuration:data:trainingStep:)`` sequence
 boundary.
 

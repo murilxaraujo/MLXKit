@@ -45,9 +45,9 @@ exist.
 - MLXKit cannot promise compatibility with MLX Swift versions outside the
   validated platform matrix or override upstream MLX API and behavior changes.
 - No binary/ABI stability is promised.
-- Checkpoint and serialized artifact compatibility across MLXKit versions is
-  not promised until the format and migration policy are defined and tested in
-  M6. Weight files and resumable checkpoints must not be assumed to be
-  interchangeable.
+- Cross-version compatibility is limited to the artifact versions and legacy
+  readers explicitly documented in <doc:M6PersistenceSemantics>. Weight files,
+  inference artifacts, progress metadata, and optimizer-aware training
+  checkpoints are distinct and must not be assumed interchangeable.
 - The supported platform/toolchain matrix is the limit of tested claims; a
   package manifest's version range does not itself establish validation.

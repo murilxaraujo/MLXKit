@@ -107,6 +107,25 @@ private final class StopAtBatchEnd: Callback, @unchecked Sendable {
     }
 }
 
+private final class EpochCompletionRecorder: Callback, @unchecked Sendable {
+    let stopAfterFirstBatch: Bool
+    private(set) var completed: [Bool] = []
+    private(set) var optimizerSteps: [Int] = []
+
+    init(stopAfterFirstBatch: Bool = false) {
+        self.stopAfterFirstBatch = stopAfterFirstBatch
+    }
+
+    func onBatchEnd(state: TrainingState) {
+        if stopAfterFirstBatch { state.shouldStop = true }
+    }
+
+    func onEpochEnd(state: TrainingState) {
+        completed.append(state.epochCompleted)
+        optimizerSteps.append(state.optimizerStep)
+    }
+}
+
 /// A fixed regression fixture with inputs `1...4` and target `2x`.
 private func makeRegressionDataset(count: Int) -> InMemoryDataset {
     let values = (0..<count).map { Float32($0 % 4 + 1) }
@@ -983,6 +1002,59 @@ struct TrainingEngineFitGPUTests {
             "trainBegin", "epochBegin", "batchBegin", "batchEnd", "epochEnd", "trainEnd",
         ])
         #expect(!model.training)
+    }
+
+    @Test func trainingProgressReportsOnlyFullyConsumedEpochsAndResumesScheduleStep() async throws {
+        let inputs = MLXArray([1.0, 2.0, 3.0, 4.0] as [Float32]).reshaped([4, 1])
+        let targets = MLXArray.zeros([4, 1])
+        let loader = try DataLoader(
+            source: InMemoryDataset(features: inputs, labels: targets),
+            batchSize: 2
+        )
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.1),
+            objective: MSELoss(),
+            learningRateSchedule: StepDecay(initialLR: 0.1, stepSize: 1, gamma: 0.5)
+        )
+
+        let completeRecorder = EpochCompletionRecorder()
+        _ = try await TrainingEngine().fit(
+            ScalarLinearModel(),
+            configuration: configuration,
+            data: loader,
+            epochs: 1,
+            callbacks: [completeRecorder]
+        )
+        #expect(completeRecorder.completed == [true])
+        #expect(completeRecorder.optimizerSteps == [2])
+
+        let stoppedRecorder = EpochCompletionRecorder(stopAfterFirstBatch: true)
+        _ = try await TrainingEngine().fit(
+            ScalarLinearModel(),
+            configuration: configuration,
+            data: loader,
+            epochs: 2,
+            callbacks: [stoppedRecorder]
+        )
+        #expect(stoppedRecorder.completed == [false])
+        #expect(stoppedRecorder.optimizerSteps == [1])
+
+        do {
+            _ = try await TrainingEngine().fit(
+                ScalarLinearModel(),
+                configuration: configuration,
+                data: loader,
+                epochs: 1,
+                resumeFrom: TrainingProgress(completedEpochs: 1, optimizerStep: 2)
+            )
+            Issue.record("Expected exhausted resume progress to fail")
+        } catch let error as TrainingError {
+            #expect(error == .invalidResumeProgress(
+                completedEpochs: 1,
+                optimizerStep: 2,
+                totalEpochs: 1
+            ))
+        }
     }
 
     @Test func callbackLifecycleOrderAndFitModeRestoration() async throws {
