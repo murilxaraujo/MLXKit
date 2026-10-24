@@ -159,8 +159,15 @@ call. Pass the same step to evaluation when its loss should match training.
 
 `fit` and `evaluate` are `async throws`. Callback hooks are synchronous and
 throwing; callback errors propagate. Swift task cancellation surfaces as
-`CancellationError`. M2 defines exact event order, cancellation checkpoints,
-cleanup, error types, early-stop timing, and metric/output reuse.
+`CancellationError`, checked before each batch update and after batch-sequence
+completion. Callback hooks run serially in the documented lifecycle order.
+After train-begin dispatch starts, train-end dispatch runs exactly once on
+success, early stop, cancellation, or failure; an original run error takes
+precedence if train-end also throws. Early-stop requests take effect after the
+current batch/epoch-end hook. Fit restores the model's prior train/eval mode;
+evaluate and predict do the same. Non-finite objectives or gradients throw
+typed `TrainingError`s before an optimizer update. These semantics are covered
+by M2 tests.
 
 ```swift
 public func fit<Model: TrainableModel, Target>(
@@ -443,6 +450,7 @@ across versions; M6 owns the artifact policy.
 | `predict(input: MLXArray) -> MLXArray` | `predict(input: Model.Input) -> Model.Output` | Update call sites and handle the full structured output type where applicable. |
 | Concrete optimizer casts for schedules | Optional `LearningRateControllable` capability | Custom optimizer integrations conform explicitly; unsupported schedule/optimizer combinations fail clearly. |
 | Nonthrowing callback hooks | Synchronous throwing hooks | Add `throws` to callback conformances and handle propagated callback errors. Async training cancellation surfaces as `CancellationError`. |
+| `TerminateOnNaN` callback | Typed `TrainingError.nonFiniteObjective` / `.nonFiniteGradient` | Remove the callback; non-finite training values fail before an optimizer update instead of requesting a stop after a bad update. |
 | `Checkpointing` weight/full-checkpoint calls | No M1 mapping selected | M6 will distinguish weights, inference artifacts, and resumable checkpoints. Do not assume cross-version artifact compatibility. |
 
 ## Alternatives rejected

@@ -56,6 +56,46 @@ private struct FixedLearningRateSchedule: LRSchedule {
     func learningRate(atStep step: Int) -> Float { 0.01 }
 }
 
+private enum CallbackFixtureError: Error, Equatable {
+    case failedAtTrainBegin
+    case failedAtBatchBegin
+    case failedAtTrainEnd
+}
+
+private final class LifecycleCallback: Callback, @unchecked Sendable {
+    private(set) var events: [String] = []
+    let failure: CallbackFixtureError?
+    let cancelAtBatchBegin: Bool
+
+    init(failure: CallbackFixtureError? = nil, cancelAtBatchBegin: Bool = false) {
+        self.failure = failure
+        self.cancelAtBatchBegin = cancelAtBatchBegin
+    }
+
+    func onTrainBegin(state: TrainingState) throws {
+        events.append("trainBegin")
+        if failure == .failedAtTrainBegin { throw CallbackFixtureError.failedAtTrainBegin }
+    }
+
+    func onBatchBegin(state: TrainingState) throws {
+        events.append("batchBegin")
+        if failure == .failedAtBatchBegin { throw CallbackFixtureError.failedAtBatchBegin }
+        if cancelAtBatchBegin {
+            withUnsafeCurrentTask { $0?.cancel() }
+        }
+    }
+
+    func onTrainEnd(state: TrainingState) throws {
+        events.append("trainEnd")
+        if failure == .failedAtTrainEnd { throw CallbackFixtureError.failedAtTrainEnd }
+    }
+}
+
+private final class UncheckedSendableBox<Value>: @unchecked Sendable {
+    let value: Value
+    init(_ value: Value) { self.value = value }
+}
+
 @Suite("TrainingConfiguration")
 struct TrainingConfigurationTests {
     @Test func storesAllComponents() {
@@ -212,5 +252,93 @@ struct TrainingErrorTests {
         } catch let error as TrainingError {
             #expect(error == .metricNameCollision(name))
         }
+    }
+
+    @Test func callbackFailurePropagatesAndRunsTerminalHook() async throws {
+        let model = IntegerModel()
+        model.train(false)
+        let callback = LifecycleCallback(failure: .failedAtTrainBegin)
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.1),
+            objective: ClosureObjective<Int, Int> { _, _ in MLXArray(0) }
+        )
+
+        do {
+            _ = try await TrainingEngine().fit(
+                model,
+                configuration: configuration,
+                data: EmptyBatches<Batch<Int, Int>>(),
+                epochs: 1,
+                callbacks: [callback]
+            )
+            Issue.record("Expected the callback failure to reach the caller")
+        } catch let error as CallbackFixtureError {
+            #expect(error == .failedAtTrainBegin)
+        }
+
+        #expect(callback.events == ["trainBegin", "trainEnd"])
+        #expect(!model.training)
+    }
+
+    @Test func callbackFailureAtBatchBeginSkipsUpdateAndRunsTrainEnd() async throws {
+        let model = IntegerModel()
+        model.train(false)
+        let callback = LifecycleCallback(failure: .failedAtBatchBegin)
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.1),
+            objective: ClosureObjective<Int, Int> { _, _ in MLXArray(0) }
+        )
+
+        do {
+            _ = try await TrainingEngine().fit(
+                model,
+                configuration: configuration,
+                data: FixedBatches(batches: [Batch(input: 1, target: 1, sampleCount: 1)]),
+                epochs: 1,
+                callbacks: [callback]
+            )
+            Issue.record("Expected the callback failure to reach the caller")
+        } catch let error as CallbackFixtureError {
+            #expect(error == .failedAtBatchBegin)
+        }
+
+        #expect(callback.events == ["trainBegin", "batchBegin", "trainEnd"])
+        #expect(!model.training)
+    }
+
+    @Test func cancellationAtBatchBeginStopsBeforeObjectiveAndPropagates() async throws {
+        let model = IntegerModel()
+        model.train(false)
+        let callback = LifecycleCallback(cancelAtBatchBegin: true)
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.1),
+            objective: ClosureObjective<Int, Int> { _, _ in MLXArray(0) }
+        )
+
+        let modelBox = UncheckedSendableBox(model)
+        let configurationBox = UncheckedSendableBox(configuration)
+        let callbackBox = UncheckedSendableBox(callback)
+        let dataBox = UncheckedSendableBox(
+            FixedBatches(batches: [Batch(input: 1, target: 1, sampleCount: 1)])
+        )
+        let trainingTask = Task {
+            try await TrainingEngine().fit(
+                modelBox.value,
+                configuration: configurationBox.value,
+                data: dataBox.value,
+                epochs: 1,
+                callbacks: [callbackBox.value]
+            )
+        }
+
+        do {
+            _ = try await trainingTask.value
+            Issue.record("Expected task cancellation to propagate")
+        } catch is CancellationError {
+            // Expected: the task was cancelled by onBatchBegin.
+        }
+
+        #expect(callback.events == ["trainBegin", "batchBegin", "trainEnd"])
+        #expect(!model.training)
     }
 }

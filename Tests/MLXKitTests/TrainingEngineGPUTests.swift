@@ -80,6 +80,32 @@ private final class RecordingLearningRateSchedule: LRSchedule, @unchecked Sendab
     }
 }
 
+private enum TrainingCallbackTestError: Error, Equatable {
+    case first
+    case terminal
+}
+
+private final class LockedInt: @unchecked Sendable {
+    private(set) var value = 0
+    func increment() { value += 1 }
+}
+
+private final class LifecycleRecorder: Callback, @unchecked Sendable {
+    private(set) var events: [String] = []
+    func onTrainBegin(state: TrainingState) { events.append("trainBegin") }
+    func onEpochBegin(state: TrainingState) { events.append("epochBegin") }
+    func onBatchBegin(state: TrainingState) { events.append("batchBegin") }
+    func onBatchEnd(state: TrainingState) { events.append("batchEnd") }
+    func onEpochEnd(state: TrainingState) { events.append("epochEnd") }
+    func onTrainEnd(state: TrainingState) { events.append("trainEnd") }
+}
+
+private final class StopAtBatchEnd: Callback, @unchecked Sendable {
+    func onBatchEnd(state: TrainingState) {
+        state.shouldStop = true
+    }
+}
+
 /// Creates a simple regression dataset: y = x0 + x1
 private func makeRegressionDataset(count: Int) -> InMemoryDataset {
     let features = MLXRandom.uniform(low: -1.0, high: 1.0, [count, 2])
@@ -89,6 +115,196 @@ private func makeRegressionDataset(count: Int) -> InMemoryDataset {
 
 @Suite("TrainingEngine fit() (GPU)", .serialized)
 struct TrainingEngineFitGPUTests {
+    @Test func earlyStopAtBatchEndCompletesAndRecordsOneEpoch() async throws {
+        let model = ScalarLinearModel()
+        model.train(false)
+        let inputs = MLXArray([1.0, 2.0, 3.0, 4.0] as [Float32]).reshaped([4, 1])
+        let targets = MLXArray.zeros([4, 1])
+        let loader = DataLoader(
+            dataset: InMemoryDataset(features: inputs, labels: targets),
+            batchSize: 1
+        )
+        let recorder = LifecycleRecorder()
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.01),
+            objective: MSELoss()
+        )
+
+        let history = try await TrainingEngine().fit(
+            model,
+            configuration: configuration,
+            data: loader,
+            epochs: 3,
+            callbacks: [StopAtBatchEnd(), recorder]
+        )
+
+        #expect(history["loss"].count == 1)
+        #expect(recorder.events == [
+            "trainBegin", "epochBegin", "batchBegin", "batchEnd", "epochEnd", "trainEnd",
+        ])
+        #expect(!model.training)
+    }
+
+    @Test func callbackLifecycleOrderAndFitModeRestoration() async throws {
+        let model = ScalarLinearModel()
+        model.train(false)
+        let inputs = MLXArray([1.0, 2.0] as [Float32]).reshaped([2, 1])
+        let targets = MLXArray.zeros([2, 1])
+        let loader = DataLoader(
+            dataset: InMemoryDataset(features: inputs, labels: targets),
+            batchSize: 2
+        )
+        let recorder = LifecycleRecorder()
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.01),
+            objective: MSELoss()
+        )
+
+        _ = try await TrainingEngine().fit(
+            model,
+            configuration: configuration,
+            data: loader,
+            epochs: 1,
+            callbacks: [recorder]
+        )
+
+        #expect(recorder.events == [
+            "trainBegin", "epochBegin", "batchBegin", "batchEnd", "epochEnd", "trainEnd",
+        ])
+        #expect(!model.training)
+    }
+
+    @Test func nonFiniteObjectiveDoesNotUpdateParametersAndRestoresMode() async throws {
+        let model = ScalarLinearModel()
+        model.train(false)
+        let inputs = MLXArray([1.0, 2.0] as [Float32]).reshaped([2, 1])
+        let targets = MLXArray.zeros([2, 1])
+        let loader = DataLoader(
+            dataset: InMemoryDataset(features: inputs, labels: targets),
+            batchSize: 2
+        )
+        let before = model.trainableParameters().flattened()[0].1.item(Float.self)
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.1),
+            objective: ClosureObjective<MLXArray, MLXArray> { output, _ in
+                output.mean() * 0 + MLXArray(Float32.nan)
+            }
+        )
+
+        do {
+            _ = try await TrainingEngine().fit(
+                model,
+                configuration: configuration,
+                data: loader,
+                epochs: 1
+            )
+            Issue.record("Expected a non-finite objective to fail")
+        } catch let error as TrainingError {
+            #expect(error == .nonFiniteObjective)
+        }
+
+        let after = model.trainableParameters().flattened()[0].1.item(Float.self)
+        #expect(after == before)
+        #expect(!model.training)
+    }
+
+    @Test func nonFiniteGradientDoesNotUpdateParameters() async throws {
+        let model = ScalarLinearModel()
+        let inputs = MLXArray.zeros([2, 1])
+        let targets = MLXArray.zeros([2, 1])
+        let loader = DataLoader(
+            dataset: InMemoryDataset(features: inputs, labels: targets),
+            batchSize: 2
+        )
+        let before = model.trainableParameters().flattened()[0].1.item(Float.self)
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.1),
+            objective: ClosureObjective<MLXArray, MLXArray> { output, _ in
+                sqrt(output.mean())
+            }
+        )
+
+        do {
+            _ = try await TrainingEngine().fit(
+                model,
+                configuration: configuration,
+                data: loader,
+                epochs: 1
+            )
+            Issue.record("Expected a non-finite gradient to fail")
+        } catch let error as TrainingError {
+            #expect(error == .nonFiniteGradient)
+        }
+
+        let after = model.trainableParameters().flattened()[0].1.item(Float.self)
+        #expect(after == before)
+    }
+
+    @Test func terminalCallbackFailureIsReportedOnce() async throws {
+        let model = ScalarLinearModel()
+        let inputs = MLXArray([1.0] as [Float32]).reshaped([1, 1])
+        let targets = MLXArray.zeros([1, 1])
+        let loader = DataLoader(
+            dataset: InMemoryDataset(features: inputs, labels: targets),
+            batchSize: 1
+        )
+        let terminalCalls = LockedInt()
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.01),
+            objective: MSELoss()
+        )
+        let callback = LambdaCallback(onTrainEnd: { _ in
+            terminalCalls.increment()
+            throw TrainingCallbackTestError.terminal
+        })
+
+        do {
+            _ = try await TrainingEngine().fit(
+                model,
+                configuration: configuration,
+                data: loader,
+                epochs: 1,
+                callbacks: [callback]
+            )
+            Issue.record("Expected the terminal callback error to propagate")
+        } catch let error as TrainingCallbackTestError {
+            #expect(error == .terminal)
+        }
+
+        #expect(terminalCalls.value == 1)
+    }
+
+    @Test func originalCallbackFailureWinsIfTerminalCallbackAlsoFails() async throws {
+        let model = ScalarLinearModel()
+        let inputs = MLXArray([1.0] as [Float32]).reshaped([1, 1])
+        let targets = MLXArray.zeros([1, 1])
+        let loader = DataLoader(
+            dataset: InMemoryDataset(features: inputs, labels: targets),
+            batchSize: 1
+        )
+        let callback = LambdaCallback(
+            onTrainEnd: { _ in throw TrainingCallbackTestError.terminal },
+            onBatchBegin: { _ in throw TrainingCallbackTestError.first }
+        )
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.01),
+            objective: MSELoss()
+        )
+
+        do {
+            _ = try await TrainingEngine().fit(
+                model,
+                configuration: configuration,
+                data: loader,
+                epochs: 1,
+                callbacks: [callback]
+            )
+            Issue.record("Expected the batch callback error to propagate")
+        } catch let error as TrainingCallbackTestError {
+            #expect(error == .first)
+        }
+    }
+
     @Test func scheduleStartsAtZeroAndAdvancesAfterSuccessfulUpdates() async throws {
         let model = ScalarLinearModel()
         let inputs = MLXArray([1.0, 2.0, 3.0] as [Float32]).reshaped([3, 1])

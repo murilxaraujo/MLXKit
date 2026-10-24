@@ -82,7 +82,7 @@ let info = try Checkpointing.load(into: restoredModel, from: checkpointURL)
 | **Training Engine** | Keras-style `compile()` / `fit()` / `evaluate()` / `predict()` |
 | **Losses** | CrossEntropy, BCE, MSE, L1, Huber, KLDiv with configurable reduction |
 | **Metrics** | Accuracy, TopK, MSE, MAE, RunningLoss with batch accumulation |
-| **Callbacks** | EarlyStopping, ModelCheckpoint, ProgressReporter, TerminateOnNaN, Lambda |
+| **Callbacks** | EarlyStopping, ModelCheckpoint, ProgressReporter, Lambda |
 | **Data** | `Dataset` protocol, `InMemoryDataset`, `AsyncSequence`-based `DataLoader` |
 | **LR Schedules** | CosineDecay, StepDecay, ExponentialDecay, composable Warmup |
 | **Serialization** | Weight save/load and full checkpoint (model + epoch + metadata) via safetensors |

@@ -94,6 +94,7 @@ public final class TrainingEngine: @unchecked Sendable {
             throw TrainingError.invalidEpochCount(epochs)
         }
         try validateMetricNames(configuration.metrics)
+        try Task.checkCancellation()
 
         let learningRateController: (any LearningRateControllable)?
         if configuration.learningRateSchedule != nil {
@@ -109,9 +110,11 @@ public final class TrainingEngine: @unchecked Sendable {
         let callbackList = CallbackList([history] + callbacks)
         let state = TrainingState()
         state.totalEpochs = epochs
-        callbackList.onTrainBegin(state: state)
+        let wasTraining = model.training
+        defer { model.train(wasTraining) }
 
         var globalStep = 0
+        let objectiveShape = ObjectiveShapeRecorder()
         let lossAndGrad = valueAndGrad(model: model) { (differentiableModel: Model, batch: Batch<Model.Input, Target>) in
             let output = differentiableModel(batch.input)
             let objective: MLXArray
@@ -120,101 +123,144 @@ public final class TrainingEngine: @unchecked Sendable {
             } else {
                 objective = configuration.objective(output: output, target: batch.target)
             }
-            return [objective]
+            if objective.ndim != 0 {
+                objectiveShape.nonScalarShape = objective.shape
+            }
+            // MLX's valueAndGrad requires scalar outputs. Sum preserves a true
+            // scalar objective and lets us report vector objectives safely.
+            return [objective.sum()]
         }
 
-        for epoch in 0..<epochs {
-            state.epoch = epoch
-            state.batch = 0
-            state.logs = [:]
-            state.shouldStop = false
+        var trainBeginStarted = false
+        var trainEndStarted = false
 
-            model.train(true)
-            for metric in configuration.metrics {
-                metric.reset()
-            }
-            callbackList.onEpochBegin(state: state)
+        do {
+            trainBeginStarted = true
+            try callbackList.onTrainBegin(state: state)
+            try Task.checkCancellation()
 
-            var weightedLoss: Float = 0
-            var lossWeight: Int = 0
-            var batchIndex = 0
+            for epoch in 0..<epochs {
+                state.epoch = epoch
+                state.batch = 0
+                state.logs = [:]
+                state.shouldStop = false
 
-            for try await batch in data {
-                state.batch = batchIndex
-                guard batch.sampleCount > 0 else {
-                    throw TrainingError.invalidSampleCount(batch.sampleCount)
-                }
-
-                if let schedule = configuration.learningRateSchedule {
-                    let learningRate = schedule.learningRate(atStep: globalStep)
-                    try learningRateController?.setLearningRate(learningRate)
-                }
-
-                callbackList.onBatchBegin(state: state)
-
-                let (values, gradients) = lossAndGrad(model, batch)
-                guard let lossValue = values.first else {
-                    throw TrainingError.nonScalarObjective(shape: [])
-                }
-                guard lossValue.ndim == 0 else {
-                    throw TrainingError.nonScalarObjective(shape: lossValue.shape)
-                }
-                eval(lossValue, gradients)
-
-                // Metrics see the model output before this batch's update.
-                // The objective forward pass remains inside MLX's gradient transform.
-                let metricOutput = model(batch.input)
-                eval(metricOutput)
+                model.train(true)
                 for metric in configuration.metrics {
-                    metric.update(output: metricOutput, target: batch.target)
+                    metric.reset()
+                }
+                try callbackList.onEpochBegin(state: state)
+                try Task.checkCancellation()
+
+                var weightedLoss: Float = 0
+                var lossWeight: Int = 0
+                var batchIndex = 0
+
+                for try await batch in data {
+                    try Task.checkCancellation()
+                    state.batch = batchIndex
+                    guard batch.sampleCount > 0 else {
+                        throw TrainingError.invalidSampleCount(batch.sampleCount)
+                    }
+
+                    if let schedule = configuration.learningRateSchedule {
+                        let learningRate = schedule.learningRate(atStep: globalStep)
+                        try learningRateController?.setLearningRate(learningRate)
+                    }
+
+                    try callbackList.onBatchBegin(state: state)
+                    try Task.checkCancellation()
+
+                    objectiveShape.nonScalarShape = nil
+                    let (values, gradients) = lossAndGrad(model, batch)
+                    if let shape = objectiveShape.nonScalarShape {
+                        throw TrainingError.nonScalarObjective(shape: shape)
+                    }
+                    guard let lossValue = values.first else {
+                        throw TrainingError.nonScalarObjective(shape: [])
+                    }
+                    guard lossValue.ndim == 0 else {
+                        throw TrainingError.nonScalarObjective(shape: lossValue.shape)
+                    }
+                    eval(lossValue, gradients)
+                    let scalarLoss = lossValue.item(Float.self)
+                    guard scalarLoss.isFinite else {
+                        throw TrainingError.nonFiniteObjective
+                    }
+
+                    let flattenedGradients = gradients.flattened()
+                    for (_, gradient) in flattenedGradients {
+                        let finiteCount = isFinite(gradient).sum().item(Int.self)
+                        guard finiteCount == gradient.size else {
+                            throw TrainingError.nonFiniteGradient
+                        }
+                    }
+
+                    // Metrics observe predictions from the pre-update model.
+                    let metricOutput = model(batch.input)
+                    eval(metricOutput)
+                    for metric in configuration.metrics {
+                        metric.update(output: metricOutput, target: batch.target)
+                    }
+
+                    weightedLoss += scalarLoss * Float(batch.sampleCount)
+                    lossWeight += batch.sampleCount
+
+                    configuration.optimizer.update(model: model, gradients: gradients)
+                    eval(model, configuration.optimizer)
+                    globalStep += 1
+
+                    state.logs["loss"] = scalarLoss
+                    try callbackList.onBatchEnd(state: state)
+                    try Task.checkCancellation()
+
+                    if state.shouldStop {
+                        break
+                    }
+                    batchIndex += 1
                 }
 
-                let scalarLoss = lossValue.item(Float.self)
-                weightedLoss += scalarLoss * Float(batch.sampleCount)
-                lossWeight += batch.sampleCount
+                try Task.checkCancellation()
+                guard batchIndex > 0 || state.shouldStop else {
+                    throw TrainingError.emptyTrainingData
+                }
 
-                configuration.optimizer.update(model: model, gradients: gradients)
-                eval(model, configuration.optimizer)
-                globalStep += 1
+                state.logs["loss"] = lossWeight == 0 ? 0 : weightedLoss / Float(lossWeight)
+                for metric in configuration.metrics {
+                    state.logs[metric.name] = metric.compute()
+                }
 
-                state.logs["loss"] = scalarLoss
-                callbackList.onBatchEnd(state: state)
+                if hasValidationData {
+                    let validationValues = try await evaluate(
+                        model,
+                        configuration: configuration,
+                        data: validationData,
+                        trainingStep: trainingStep
+                    )
+                    for (name, value) in validationValues {
+                        state.logs["val_\(name)"] = value
+                    }
+                }
 
+                try callbackList.onEpochEnd(state: state)
+                try Task.checkCancellation()
                 if state.shouldStop {
                     break
                 }
-                batchIndex += 1
             }
 
-            guard batchIndex > 0 || state.shouldStop else {
-                throw TrainingError.emptyTrainingData
+            trainEndStarted = true
+            try callbackList.onTrainEnd(state: state)
+            try Task.checkCancellation()
+            return history
+        } catch {
+            if trainBeginStarted && !trainEndStarted {
+                trainEndStarted = true
+                // Preserve the original failure if a terminal callback also fails.
+                try? callbackList.onTrainEnd(state: state)
             }
-
-            state.logs["loss"] = lossWeight == 0 ? 0 : weightedLoss / Float(lossWeight)
-            for metric in configuration.metrics {
-                state.logs[metric.name] = metric.compute()
-            }
-
-            if hasValidationData {
-                let validationValues = try await evaluate(
-                    model,
-                    configuration: configuration,
-                    data: validationData,
-                    trainingStep: trainingStep
-                )
-                for (name, value) in validationValues {
-                    state.logs["val_\(name)"] = value
-                }
-            }
-
-            callbackList.onEpochEnd(state: state)
-            if state.shouldStop {
-                break
-            }
+            throw error
         }
-
-        callbackList.onTrainEnd(state: state)
-        return history
     }
 
     /// Evaluates a model without applying gradients or optimizer updates.
@@ -239,6 +285,7 @@ public final class TrainingEngine: @unchecked Sendable {
         var batchCount = 0
 
         for try await batch in data {
+            try Task.checkCancellation()
             guard batch.sampleCount > 0 else {
                 throw TrainingError.invalidSampleCount(batch.sampleCount)
             }
@@ -252,6 +299,9 @@ public final class TrainingEngine: @unchecked Sendable {
             }
             eval(loss)
             let scalarLoss = loss.item(Float.self)
+            guard scalarLoss.isFinite else {
+                throw TrainingError.nonFiniteObjective
+            }
             weightedLoss += scalarLoss * Float(batch.sampleCount)
             sampleCount += batch.sampleCount
 
@@ -260,6 +310,8 @@ public final class TrainingEngine: @unchecked Sendable {
             }
             batchCount += 1
         }
+
+        try Task.checkCancellation()
 
         guard batchCount > 0 else {
             throw TrainingError.emptyEvaluationData
@@ -312,10 +364,12 @@ public final class TrainingEngine: @unchecked Sendable {
 
         var outputs: [Model.Output] = []
         for try await batch in data {
+            try Task.checkCancellation()
             let output = model(batch.input)
             eval(output)
             outputs.append(output)
         }
+        try Task.checkCancellation()
         return outputs
     }
 
@@ -329,4 +383,9 @@ private struct EmptyBatchSequence<Element>: AsyncSequence {
     struct Iterator: AsyncIteratorProtocol {
         mutating func next() async -> Element? { nil }
     }
+}
+
+/// Captures objective shape during MLX's synchronous value-and-gradient call.
+private final class ObjectiveShapeRecorder {
+    var nonScalarShape: [Int]?
 }

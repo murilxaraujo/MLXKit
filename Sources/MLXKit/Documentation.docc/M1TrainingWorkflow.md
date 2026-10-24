@@ -153,8 +153,9 @@ custom optimizers can adopt the capability when they support it. The existing
 MLXKit schedule abstraction (or an equivalent step-to-rate closure) computes
 the value. MLXKit does not reimplement optimizer behavior. Configuring a
 schedule with an optimizer that does not support rate updates must fail clearly
-before training rather than silently ignore the schedule. M2 defines exact
-validation and step-count semantics.
+before training rather than silently ignore the schedule. M2 starts at schedule
+step zero and advances once per successful optimizer update; evaluation does
+not read or mutate the schedule.
 
 ## Lifecycle, cancellation, and errors
 
@@ -162,18 +163,21 @@ validation and step-count semantics.
   operations because data may be asynchronous and failures must reach callers.
 - Callback hooks are synchronous and throwing. A callback failure propagates
   from `fit`; it is not converted to a log message or ignored.
-- Swift task cancellation is surfaced as `CancellationError`. The engine checks
-  cancellation at documented loop boundaries; exact checks and cleanup order
-  are tested in M2.
-- A callback can request an orderly early stop without turning it into an
-  error. M2 specifies when that request takes effect.
-- Data-source, configuration, non-finite objective, optimizer, and callback
-  failures must not be reported as successful training. M2 defines concrete
-  error types and the detailed validation surface.
+- Swift task cancellation is surfaced as `CancellationError`. The engine
+  checks cancellation before batch work, after callbacks, and after sequence
+  completion.
+- A callback can request an orderly early stop from `onBatchEnd` or
+  `onEpochEnd`; the engine completes the current batch/epoch boundary.
+- Objective/gradient, data-source, configuration, schedule, and callback
+  failures are thrown. Non-finite objectives and gradients fail before the
+  optimizer update.
+- Once train-begin dispatch starts, train-end dispatch runs exactly once on
+  completion, early stop, cancellation, or failure. The original run error
+  wins if train-end also throws.
+- `fit`, `evaluate`, and `predict` restore the model's prior train/eval mode.
 
-The lifecycle remains observable through callbacks and per-epoch history. M2
-owns exact hook order, validation timing, partial-run history, cleanup behavior,
-and whether terminal callbacks run after cancellation or callback failure.
+The lifecycle remains observable through callbacks and per-epoch history. The
+M2 implementation and tests define exact hook order and failure cleanup.
 
 ## Alternatives and rationale
 
@@ -190,14 +194,10 @@ and whether terminal callbacks run after cancellation or callback failure.
   source of optimizer algorithms; the optional rate-control capability only
   describes one optional property of an optimizer.
 
-## Deferred to M2 and later milestones
+## Deferred to later milestones
 
 - Issue #11 defines the batch type consumed by `TrainingStep`.
-- M2 defines callback ordering, cancellation checkpoints, early-stop timing,
-  typed errors, optimizer schedule step counts, metric output reuse, and
-  integration tests.
 - M5 owns gradient controls and training controls beyond one MLX gradient and
   one configured optimizer update per batch.
 
-The integrated names and signatures are in <doc:API2Design>, pending pair
-approval.
+The integrated names and signatures are in <doc:API2Design>.

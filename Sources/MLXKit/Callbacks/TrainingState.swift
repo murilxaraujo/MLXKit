@@ -22,7 +22,8 @@ public final class TrainingState: @unchecked Sendable {
     /// Key-value log entries for the current step (e.g. `"loss"`, `"accuracy"`).
     public var logs: [String: Float] = [:]
 
-    /// Set to `true` from a callback to request early termination.
+    /// Set in `onBatchEnd` or `onEpochEnd` to request orderly early termination.
+    /// The engine completes the current batch/epoch boundary before stopping.
     public var shouldStop: Bool = false
 
     public init() {}

@@ -7,11 +7,15 @@ private final class Collector: @unchecked Sendable {
     func append(_ item: String) { items.append(item) }
 }
 
+private enum TestCallbackError: Error, Equatable {
+    case failed
+}
+
 // MARK: - CallbackList dispatch order
 
 @Suite("CallbackList")
 struct CallbackListTests {
-    @Test func dispatchesInOrder() {
+    @Test func dispatchesInOrder() throws {
         let order = Collector()
 
         let a = LambdaCallback(onEpochEnd: { _ in order.append("A") })
@@ -20,12 +24,12 @@ struct CallbackListTests {
 
         let list = CallbackList([a, b, c])
         let state = TrainingState()
-        list.onEpochEnd(state: state)
+        try list.onEpochEnd(state: state)
 
         #expect(order.items == ["A", "B", "C"])
     }
 
-    @Test func dispatchesAllHooks() {
+    @Test func dispatchesAllHooks() throws {
         let hooks = Collector()
 
         let cb = LambdaCallback(
@@ -40,17 +44,17 @@ struct CallbackListTests {
         let list = CallbackList([cb])
         let state = TrainingState()
 
-        list.onTrainBegin(state: state)
-        list.onEpochBegin(state: state)
-        list.onBatchBegin(state: state)
-        list.onBatchEnd(state: state)
-        list.onEpochEnd(state: state)
-        list.onTrainEnd(state: state)
+        try list.onTrainBegin(state: state)
+        try list.onEpochBegin(state: state)
+        try list.onBatchBegin(state: state)
+        try list.onBatchEnd(state: state)
+        try list.onEpochEnd(state: state)
+        try list.onTrainEnd(state: state)
 
         #expect(hooks.items == ["trainBegin", "epochBegin", "batchBegin", "batchEnd", "epochEnd", "trainEnd"])
     }
 
-    @Test func shouldStopPropagates() {
+    @Test func shouldStopPropagates() throws {
         let stopper = LambdaCallback(onBatchEnd: { state in
             state.shouldStop = true
         })
@@ -59,8 +63,23 @@ struct CallbackListTests {
         let state = TrainingState()
         #expect(state.shouldStop == false)
 
-        list.onBatchEnd(state: state)
+        try list.onBatchEnd(state: state)
         #expect(state.shouldStop == true)
+    }
+
+    @Test func callbackFailureStopsOrderedDispatchAndPropagates() {
+        let order = Collector()
+        let failing = LambdaCallback(onEpochEnd: { _ in
+            order.append("before-error")
+            throw TestCallbackError.failed
+        })
+        let later = LambdaCallback(onEpochEnd: { _ in order.append("after-error") })
+        let list = CallbackList([failing, later])
+
+        #expect(throws: TestCallbackError.self) {
+            try list.onEpochEnd(state: TrainingState())
+        }
+        #expect(order.items == ["before-error"])
     }
 }
 
@@ -70,15 +89,15 @@ final class NoOpCallback: Callback {}
 
 @Suite("Default No-Op Callback")
 struct DefaultNoOpCallbackTests {
-    @Test func defaultImplementationsDontCrash() {
+    @Test func defaultImplementationsDontCrash() throws {
         let cb = NoOpCallback()
         let state = TrainingState()
-        cb.onTrainBegin(state: state)
-        cb.onEpochBegin(state: state)
-        cb.onBatchBegin(state: state)
-        cb.onBatchEnd(state: state)
-        cb.onEpochEnd(state: state)
-        cb.onTrainEnd(state: state)
+        try cb.onTrainBegin(state: state)
+        try cb.onEpochBegin(state: state)
+        try cb.onBatchBegin(state: state)
+        try cb.onBatchEnd(state: state)
+        try cb.onEpochEnd(state: state)
+        try cb.onTrainEnd(state: state)
     }
 }
 
@@ -200,52 +219,11 @@ struct EarlyStoppingTests {
     }
 }
 
-// MARK: - TerminateOnNaN
-
-@Suite("TerminateOnNaN")
-struct TerminateOnNaNTests {
-    @Test func stopsOnNaN() {
-        let guard_ = TerminateOnNaN()
-        let state = TrainingState()
-
-        state.logs = ["loss": Float.nan]
-        guard_.onBatchEnd(state: state)
-        #expect(state.shouldStop == true)
-    }
-
-    @Test func stopsOnInfinite() {
-        let guard_ = TerminateOnNaN()
-        let state = TrainingState()
-
-        state.logs = ["loss": Float.infinity]
-        guard_.onBatchEnd(state: state)
-        #expect(state.shouldStop == true)
-    }
-
-    @Test func doesNotStopOnValidLoss() {
-        let guard_ = TerminateOnNaN()
-        let state = TrainingState()
-
-        state.logs = ["loss": 0.5]
-        guard_.onBatchEnd(state: state)
-        #expect(state.shouldStop == false)
-    }
-
-    @Test func customMonitorKey() {
-        let guard_ = TerminateOnNaN(monitor: "custom_loss")
-        let state = TrainingState()
-
-        state.logs = ["custom_loss": Float.nan]
-        guard_.onBatchEnd(state: state)
-        #expect(state.shouldStop == true)
-    }
-}
-
 // MARK: - LambdaCallback
 
 @Suite("LambdaCallback")
 struct LambdaCallbackTests {
-    @Test func closuresFireAtCorrectHooks() {
+    @Test func closuresFireAtCorrectHooks() throws {
         let fired = Collector()
 
         let cb = LambdaCallback(
@@ -254,9 +232,9 @@ struct LambdaCallbackTests {
         )
 
         let state = TrainingState()
-        cb.onTrainBegin(state: state)
-        cb.onEpochBegin(state: state)
-        cb.onEpochEnd(state: state)
+        try cb.onTrainBegin(state: state)
+        try cb.onEpochBegin(state: state)
+        try cb.onEpochEnd(state: state)
 
         #expect(fired.items == ["trainBegin", "epochEnd"])
     }
@@ -274,11 +252,6 @@ struct CallbackStaticLookupTests {
 
     @Test func progressReporterLookup() {
         let _: ProgressReporter = .progressReporter
-    }
-
-    @Test func terminateOnNaNLookup() {
-        let cb: TerminateOnNaN = .terminateOnNaN
-        #expect(cb.monitor == "loss")
     }
 
     @Test func historyLookup() {

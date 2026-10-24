@@ -87,12 +87,12 @@ let history = try await engine.fit(
 - ``EarlyStopping``
 - ``ModelCheckpoint``
 - ``ProgressReporter``
-- ``TerminateOnNaN``
 - ``LambdaCallback``
 
 ### Learning Rate Schedules
 
 - ``LRSchedule``
+- ``LearningRateControllable``
 - ``CosineDecay``
 - ``StepDecay``
 - ``ExponentialDecay``
