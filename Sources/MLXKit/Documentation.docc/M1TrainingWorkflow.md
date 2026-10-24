@@ -194,9 +194,10 @@ The lifecycle remains observable through callbacks and per-epoch history. See
   source of optimizer algorithms; the optional rate-control capability only
   describes one optional property of an optimizer.
 
-## Deferred to later milestones
+## M5 training controls
 
-- M5 owns gradient controls and training controls beyond one MLX gradient and
-  one configured optimizer update per batch.
+- M5 adds ordered gradient transforms, global-norm clipping, and sample-aware
+  accumulation while preserving MLX autodiff and MLXOptimizers updates.
+- The default configuration still applies one optimizer update per input batch.
 
 The integrated names and signatures are in <doc:API2Design>.

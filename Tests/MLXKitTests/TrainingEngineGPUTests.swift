@@ -140,8 +140,325 @@ private struct ReiterableMLXSampleSequence: AsyncSequence {
     }
 }
 
+private struct BatchSequence: AsyncSequence {
+    typealias Element = Batch<MLXArray, MLXArray>
+    typealias Failure = Never
+
+    let batches: [Element]
+
+    func makeAsyncIterator() -> Iterator { Iterator(batches: batches) }
+
+    struct Iterator: AsyncIteratorProtocol {
+        typealias Element = Batch<MLXArray, MLXArray>
+        typealias Failure = Never
+
+        let batches: [Element]
+        var offset = 0
+
+        mutating func next() async -> Element? {
+            guard offset < batches.count else { return nil }
+            defer { offset += 1 }
+            return batches[offset]
+        }
+    }
+}
+
+private func regressionBatch(_ values: [Float32]) -> Batch<MLXArray, MLXArray> {
+    let inputs = MLXArray(values).reshaped([values.count, 1])
+    return Batch(input: inputs, target: MLXArray.zeros([values.count, 1]), sampleCount: values.count)
+}
+
+private final class CancelAtBatchEnd: Callback {
+    func onBatchEnd(state: TrainingState) {
+        withUnsafeCurrentTask { $0?.cancel() }
+    }
+}
+
 @Suite("TrainingEngine fit() (GPU)", .serialized)
 struct TrainingEngineFitGPUTests {
+    @Test func sampleAwareAccumulationMatchesCombinedBatchMeanForEqualAndUnevenMicrobatches() async throws {
+        let microbatchExamples: [[[Float32]]] = [
+            [[1], [2]],
+            [[1], [2, 3]],
+        ]
+
+        for examples in microbatchExamples {
+            let accumulatedOptimizer = RecordingGradientOptimizer()
+            let accumulatedBatches = BatchSequence(batches: examples.map(regressionBatch))
+            let accumulatedConfiguration = TrainingConfiguration(
+                optimizer: accumulatedOptimizer,
+                objective: MSELoss(),
+                gradientAccumulationSteps: examples.count
+            )
+            _ = try await TrainingEngine().fit(
+                ScalarLinearModel(),
+                configuration: accumulatedConfiguration,
+                data: accumulatedBatches,
+                epochs: 1
+            )
+
+            let referenceOptimizer = RecordingGradientOptimizer()
+            let combinedBatch = regressionBatch(examples.flatMap { $0 })
+            let referenceConfiguration = TrainingConfiguration(
+                optimizer: referenceOptimizer,
+                objective: MSELoss()
+            )
+            _ = try await TrainingEngine().fit(
+                ScalarLinearModel(),
+                configuration: referenceConfiguration,
+                data: BatchSequence(batches: [combinedBatch]),
+                epochs: 1
+            )
+
+            #expect(accumulatedOptimizer.receivedGradients.count == 1)
+            #expect(referenceOptimizer.receivedGradients.count == 1)
+            let accumulated = accumulatedOptimizer.receivedGradients[0].flattened()[0].1
+                .item(Float.self)
+            let reference = referenceOptimizer.receivedGradients[0].flattened()[0].1
+                .item(Float.self)
+            #expect(abs(accumulated - reference) < 1e-5)
+
+            let accumulatedModel = ScalarLinearModel()
+            let accumulatedUpdateConfiguration = TrainingConfiguration(
+                optimizer: SGD(learningRate: 0.01),
+                objective: MSELoss(),
+                gradientAccumulationSteps: examples.count
+            )
+            _ = try await TrainingEngine().fit(
+                accumulatedModel,
+                configuration: accumulatedUpdateConfiguration,
+                data: accumulatedBatches,
+                epochs: 1
+            )
+
+            let referenceModel = ScalarLinearModel()
+            let referenceUpdateConfiguration = TrainingConfiguration(
+                optimizer: SGD(learningRate: 0.01),
+                objective: MSELoss()
+            )
+            _ = try await TrainingEngine().fit(
+                referenceModel,
+                configuration: referenceUpdateConfiguration,
+                data: BatchSequence(batches: [combinedBatch]),
+                epochs: 1
+            )
+            #expect(abs(
+                accumulatedModel.weight.item(Float.self)
+                    - referenceModel.weight.item(Float.self)
+            ) < 1e-5)
+        }
+    }
+
+    @Test func fullAndPartialWindowsEachUpdateOnceAndUseGradientProcessing() async throws {
+        for batchCount in [4, 5] {
+            let optimizer = RecordingGradientOptimizer()
+            let transformCalls = LockedInt()
+            let configuration = TrainingConfiguration(
+                optimizer: optimizer,
+                objective: MSELoss(),
+                gradientProcessing: GradientProcessingConfiguration(
+                    transforms: [{ gradients in
+                        transformCalls.increment()
+                        return gradients.mapValues { $0 * 2 }
+                    }],
+                    globalNormClip: 1
+                ),
+                gradientAccumulationSteps: 2
+            )
+            let batches = BatchSequence(
+                batches: (1...batchCount).map { regressionBatch([Float32($0)]) }
+            )
+
+            _ = try await TrainingEngine().fit(
+                ScalarLinearModel(),
+                configuration: configuration,
+                data: batches,
+                epochs: 1
+            )
+
+            let expectedUpdates = (batchCount + 1) / 2
+            #expect(optimizer.receivedGradients.count == expectedUpdates)
+            #expect(transformCalls.value == expectedUpdates)
+            for gradients in optimizer.receivedGradients {
+                let norm = gradients.flattened().reduce(Float.zero) {
+                    $0 + $1.1.square().sum().item(Float.self)
+                }.squareRoot()
+                #expect(norm <= 1.0001)
+            }
+        }
+    }
+
+    @Test func earlyStopFlushesThePendingPartialWindow() async throws {
+        let optimizer = RecordingGradientOptimizer()
+        let schedule = RecordingLearningRateSchedule()
+        let configuration = TrainingConfiguration(
+            optimizer: optimizer,
+            objective: MSELoss(),
+            learningRateSchedule: schedule,
+            gradientAccumulationSteps: 3
+        )
+        let history = try await TrainingEngine().fit(
+            ScalarLinearModel(),
+            configuration: configuration,
+            data: BatchSequence(batches: [
+                regressionBatch([2]), regressionBatch([4]), regressionBatch([6]),
+            ]),
+            epochs: 1,
+            callbacks: [StopAtBatchEnd()]
+        )
+
+        #expect(optimizer.receivedGradients.count == 1)
+        #expect(abs(optimizer.receivedGradients[0].flattened()[0].1.item(Float.self) - 8) < 1e-5)
+        #expect(schedule.steps == [0])
+        #expect(history.epochs.count == 1)
+    }
+
+    @Test func accumulationWindowsDoNotSpanEpochs() async throws {
+        let optimizer = RecordingGradientOptimizer()
+        let configuration = TrainingConfiguration(
+            optimizer: optimizer,
+            objective: MSELoss(),
+            gradientAccumulationSteps: 4
+        )
+        let batches = BatchSequence(batches: [
+            regressionBatch([1]), regressionBatch([2]), regressionBatch([3]),
+        ])
+
+        _ = try await TrainingEngine().fit(
+            ScalarLinearModel(),
+            configuration: configuration,
+            data: batches,
+            epochs: 2
+        )
+
+        // Each epoch flushes its own three-batch partial window.
+        #expect(optimizer.receivedGradients.count == 2)
+    }
+
+    @Test func accumulationPreservesSampleWeightedLogsMetricsAndUpdateBasedSchedule() async throws {
+        let optimizer = RecordingGradientOptimizer()
+        let schedule = RecordingLearningRateSchedule()
+        let configuration = TrainingConfiguration(
+            optimizer: optimizer,
+            objective: MSELoss(),
+            metrics: [MeanOutputMetric()],
+            learningRateSchedule: schedule,
+            gradientAccumulationSteps: 2
+        )
+        let history = try await TrainingEngine().fit(
+            ScalarLinearModel(),
+            configuration: configuration,
+            data: BatchSequence(batches: [
+                regressionBatch([1]), regressionBatch([2, 3]), regressionBatch([4]),
+            ]),
+            epochs: 1
+        )
+
+        #expect(optimizer.receivedGradients.count == 2)
+        #expect(schedule.steps == [0, 1])
+        #expect(optimizer.learningRates == [0.001, 0.002])
+        #expect(abs((history["loss"].compactMap { $0 }.first ?? 0) - 7.5) < 1e-5)
+        #expect(abs((history["mean_output"].compactMap { $0 }.first ?? 0) - 2.5) < 1e-5)
+    }
+
+    @Test func invalidAccumulationWindowFailsBeforeTraining() async throws {
+        for steps in [0, -1] {
+            let optimizer = RecordingGradientOptimizer()
+            let configuration = TrainingConfiguration(
+                optimizer: optimizer,
+                objective: MSELoss(),
+                gradientAccumulationSteps: steps
+            )
+            do {
+                _ = try await TrainingEngine().fit(
+                    ScalarLinearModel(),
+                    configuration: configuration,
+                    data: BatchSequence(batches: [regressionBatch([1])]),
+                    epochs: 1
+                )
+                Issue.record("Expected an invalid accumulation window to fail")
+            } catch let error as TrainingError {
+                #expect(error == .invalidGradientAccumulationSteps(steps))
+            }
+            #expect(optimizer.receivedGradients.isEmpty)
+        }
+    }
+
+    @Test func callbackFailureDiscardsPendingAccumulatedGradients() async throws {
+        let optimizer = RecordingGradientOptimizer()
+        let configuration = TrainingConfiguration(
+            optimizer: optimizer,
+            objective: MSELoss(),
+            gradientAccumulationSteps: 3
+        )
+        let callback = LambdaCallback(onBatchEnd: { _ in
+            throw TrainingCallbackTestError.first
+        })
+
+        do {
+            _ = try await TrainingEngine().fit(
+                ScalarLinearModel(),
+                configuration: configuration,
+                data: BatchSequence(batches: [regressionBatch([1]), regressionBatch([2])]),
+                epochs: 1,
+                callbacks: [callback]
+            )
+            Issue.record("Expected callback failure")
+        } catch let error as TrainingCallbackTestError {
+            #expect(error == .first)
+        }
+        #expect(optimizer.receivedGradients.isEmpty)
+    }
+
+    @Test func sourceFailureDiscardsPendingAccumulatedGradients() async throws {
+        let optimizer = RecordingGradientOptimizer()
+        let configuration = TrainingConfiguration(
+            optimizer: optimizer,
+            objective: MSELoss(),
+            gradientAccumulationSteps: 3
+        )
+        let source = AsyncThrowingStream<Batch<MLXArray, MLXArray>, Error> { continuation in
+            continuation.yield(regressionBatch([1]))
+            continuation.finish(throwing: TrainingCallbackTestError.first)
+        }
+
+        do {
+            _ = try await TrainingEngine().fit(
+                ScalarLinearModel(),
+                configuration: configuration,
+                data: source,
+                epochs: 1
+            )
+            Issue.record("Expected source failure")
+        } catch let error as TrainingCallbackTestError {
+            #expect(error == .first)
+        }
+        #expect(optimizer.receivedGradients.isEmpty)
+    }
+
+    @Test func cancellationDiscardsPendingAccumulatedGradients() async throws {
+        let optimizer = RecordingGradientOptimizer()
+        let configuration = TrainingConfiguration(
+            optimizer: optimizer,
+            objective: MSELoss(),
+            gradientAccumulationSteps: 3
+        )
+
+        do {
+            _ = try await TrainingEngine().fit(
+                ScalarLinearModel(),
+                configuration: configuration,
+                data: BatchSequence(batches: [regressionBatch([1]), regressionBatch([2])]),
+                epochs: 1,
+                callbacks: [CancelAtBatchEnd()]
+            )
+            Issue.record("Expected cancellation")
+        } catch is CancellationError {
+            // Expected.
+        }
+        #expect(optimizer.receivedGradients.isEmpty)
+    }
+
     @Test func gradientTransformsRunInOrderAndOptimizerReceivesOneProcessedTreePerBatch() async throws {
         let model = ScalarLinearModel()
         let inputs = MLXArray([1.0, 2.0] as [Float32]).reshaped([2, 1])

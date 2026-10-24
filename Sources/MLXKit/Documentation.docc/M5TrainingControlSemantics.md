@@ -1,10 +1,8 @@
 # M5 Training-Control Semantics
 
-**Status:** Gradient transforms and global-norm clipping are implemented.
-Accumulation and weighted cross entropy remain planned. The contracts in this
-page extend the implemented behavior in <doc:M2TrainingSemantics>; planned
-controls do not change that behavior until their implementation issues are
-complete.
+**Status:** Gradient transforms, global-norm clipping, and sample-aware
+accumulation are implemented. Weighted cross entropy remains planned. This page
+extends the implemented behavior in <doc:M2TrainingSemantics>.
 
 MLXKit continues to coordinate training. MLX owns tensor operations and
 autodiff, and MLXOptimizers owns optimizer algorithms and state. The engine
@@ -80,9 +78,21 @@ TrainingConfiguration(
 ```
 
 Transforms can throw and are declared as ``GradientTransform``. The default
-configuration has no transforms and no clipping, so it retains the current
-one-batch/one-update behavior. Accumulation will compose at this update boundary
-when implemented.
+configuration has no transforms or clipping and uses one batch per update.
+Set ``TrainingConfiguration/gradientAccumulationSteps`` to a value greater
+than one to accumulate consecutive batches:
+
+```swift
+TrainingConfiguration(
+    optimizer: optimizer,
+    objective: objective,
+    gradientAccumulationSteps: 4,
+    gradientProcessing: GradientProcessingConfiguration(
+        transforms: [transformA],
+        globalNormClip: 1.0
+    )
+)
+```
 
 ## Sample-aware accumulation
 
@@ -97,7 +107,8 @@ windowGradient = sum(n_j * g_j) / sum(n_j)
 
 This matches the gradient of a combined-batch mean for uneven microbatches when
 each batch objective is a per-example mean and examples contribute
-independently. Objectives that use a sum or another scale must normalize their
+independently. This is the objective-scaling precondition for sample-aware
+equivalence. Objectives that use a sum or another scale must normalize their
 own result if they require this equivalence. Accumulation does not promise the
 same result as sequential optimizer updates: the optimizer updates once per
 window, so its state and learning-rate schedule also advance once. Batch-coupled

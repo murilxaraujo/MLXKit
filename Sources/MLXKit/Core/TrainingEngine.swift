@@ -95,6 +95,11 @@ public final class TrainingEngine: @unchecked Sendable {
         }
         try validateMetricNames(configuration.metrics)
         try validateGradientProcessing(configuration.gradientProcessing)
+        guard configuration.gradientAccumulationSteps > 0 else {
+            throw TrainingError.invalidGradientAccumulationSteps(
+                configuration.gradientAccumulationSteps
+            )
+        }
         try Task.checkCancellation()
 
         let learningRateController: (any LearningRateControllable)?
@@ -156,6 +161,9 @@ public final class TrainingEngine: @unchecked Sendable {
                 var weightedLoss: Float = 0
                 var lossWeight: Int = 0
                 var batchIndex = 0
+                var pendingGradientSum: ModuleParameters?
+                var pendingSampleCount = 0
+                var pendingBatchCount = 0
 
                 for try await batch in data {
                     try Task.checkCancellation()
@@ -164,7 +172,9 @@ public final class TrainingEngine: @unchecked Sendable {
                         throw TrainingError.invalidSampleCount(batch.sampleCount)
                     }
 
-                    if let schedule = configuration.learningRateSchedule {
+                    if pendingBatchCount == 0,
+                       let schedule = configuration.learningRateSchedule
+                    {
                         let learningRate = schedule.learningRate(atStep: globalStep)
                         try learningRateController?.setLearningRate(learningRate)
                     }
@@ -201,19 +211,53 @@ public final class TrainingEngine: @unchecked Sendable {
                     weightedLoss += scalarLoss * Float(batch.sampleCount)
                     lossWeight += batch.sampleCount
 
-                    let processedGradients = try processGradients(
-                        gradients,
-                        using: configuration.gradientProcessing
-                    )
-                    configuration.optimizer.update(model: model, gradients: processedGradients)
-                    eval(model, configuration.optimizer)
-                    globalStep += 1
+                    let weightedGradients = configuration.gradientAccumulationSteps == 1
+                        ? gradients
+                        : gradients.mapValues { $0 * Float(batch.sampleCount) }
+                    if let accumulated = pendingGradientSum {
+                        try validateGradientStructure(gradients, matches: accumulated)
+                        let incoming = Dictionary(uniqueKeysWithValues: weightedGradients.flattened())
+                        pendingGradientSum = ModuleParameters.unflattened(
+                            accumulated.flattened().map { key, value in
+                                (key, value + incoming[key]!)
+                            }
+                        )
+                    } else {
+                        pendingGradientSum = weightedGradients
+                    }
+                    pendingSampleCount += batch.sampleCount
+                    pendingBatchCount += 1
+
+                    if pendingBatchCount == configuration.gradientAccumulationSteps {
+                        try applyAccumulatedGradients(
+                            pendingGradientSum!,
+                            sampleCount: pendingSampleCount,
+                            model: model,
+                            configuration: configuration,
+                            globalStep: &globalStep
+                        )
+                        pendingGradientSum = nil
+                        pendingSampleCount = 0
+                        pendingBatchCount = 0
+                    }
 
                     state.logs["loss"] = scalarLoss
                     try callbackList.onBatchEnd(state: state)
                     try Task.checkCancellation()
 
                     if state.shouldStop {
+                        if let gradientSum = pendingGradientSum {
+                            try applyAccumulatedGradients(
+                                gradientSum,
+                                sampleCount: pendingSampleCount,
+                                model: model,
+                                configuration: configuration,
+                                globalStep: &globalStep
+                            )
+                            pendingGradientSum = nil
+                            pendingSampleCount = 0
+                            pendingBatchCount = 0
+                        }
                         break
                     }
                     batchIndex += 1
@@ -222,6 +266,16 @@ public final class TrainingEngine: @unchecked Sendable {
                 try Task.checkCancellation()
                 guard batchIndex > 0 || state.shouldStop else {
                     throw TrainingError.emptyTrainingData
+                }
+
+                if let pendingGradientSum {
+                    try applyAccumulatedGradients(
+                        pendingGradientSum,
+                        sampleCount: pendingSampleCount,
+                        model: model,
+                        configuration: configuration,
+                        globalStep: &globalStep
+                    )
                 }
 
                 state.logs["loss"] = lossWeight == 0 ? 0 : weightedLoss / Float(lossWeight)
@@ -368,6 +422,31 @@ public final class TrainingEngine: @unchecked Sendable {
         }
 
         return processed
+    }
+
+    private func applyAccumulatedGradients<Model: TrainableModel, Target>(
+        _ gradientSum: ModuleParameters,
+        sampleCount: Int,
+        model: Model,
+        configuration: TrainingConfiguration<Model.Output, Target>,
+        globalStep: inout Int
+    ) throws {
+        guard sampleCount > 0 else {
+            throw TrainingError.invalidSampleCount(sampleCount)
+        }
+        let meanGradients = configuration.gradientAccumulationSteps == 1
+            ? gradientSum
+            : gradientSum.mapValues { $0 / Float(sampleCount) }
+        if configuration.gradientAccumulationSteps > 1 {
+            try validateFiniteGradients(meanGradients)
+        }
+        let processedGradients = try processGradients(
+            meanGradients,
+            using: configuration.gradientProcessing
+        )
+        configuration.optimizer.update(model: model, gradients: processedGradients)
+        eval(model, configuration.optimizer)
+        globalStep += 1
     }
 
     private func validateGradientStructure(

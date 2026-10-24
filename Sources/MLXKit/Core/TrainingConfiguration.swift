@@ -33,19 +33,24 @@ public struct TrainingConfiguration<Output, Target> {
     public let learningRateSchedule: (any LRSchedule)?
     /// Gradient transforms and clipping applied before each optimizer update.
     public let gradientProcessing: GradientProcessingConfiguration
+    /// Number of consecutive input batches combined into each optimizer update.
+    /// The default value of `1` preserves one optimizer update per batch.
+    public let gradientAccumulationSteps: Int
 
     public init<ObjectiveType: Objective<Output, Target>>(
         optimizer: any Optimizer,
         objective: ObjectiveType,
         metrics: [any Metric<Output, Target>] = [],
         learningRateSchedule: (any LRSchedule)? = nil,
-        gradientProcessing: GradientProcessingConfiguration = .init()
+        gradientProcessing: GradientProcessingConfiguration = .init(),
+        gradientAccumulationSteps: Int = 1
     ) {
         self.optimizer = optimizer
         self.objective = objective
         self.metrics = metrics
         self.learningRateSchedule = learningRateSchedule
         self.gradientProcessing = gradientProcessing
+        self.gradientAccumulationSteps = gradientAccumulationSteps
     }
 }
 
@@ -62,6 +67,7 @@ public enum TrainingError: Error, LocalizedError, Equatable {
     case nonFiniteObjective
     case nonFiniteGradient
     case invalidGlobalNormClip(Float)
+    case invalidGradientAccumulationSteps(Int)
     case gradientTreeKeyMismatch(expected: [String], actual: [String])
     case gradientShapeMismatch(parameter: String, expected: [Int], actual: [Int])
 
@@ -89,6 +95,8 @@ public enum TrainingError: Error, LocalizedError, Equatable {
             "Training gradient contains a non-finite value; optimizer update was not applied."
         case .invalidGlobalNormClip(let value):
             "Global gradient-norm clip must be finite and greater than zero; received \(value)."
+        case .invalidGradientAccumulationSteps(let value):
+            "Gradient accumulation steps must be greater than zero; received \(value)."
         case .gradientTreeKeyMismatch(let expected, let actual):
             "Gradient transform changed parameter keys; expected \(expected), received \(actual)."
         case .gradientShapeMismatch(let parameter, let expected, let actual):
