@@ -1,4 +1,4 @@
-.PHONY: build test test-gpu test-all clean docs docs-preview run-example
+.PHONY: build test test-gpu test-all clean docs docs-preview run-example run-tiny-decoder
 
 # Build the library
 build:
@@ -36,3 +36,7 @@ docs-preview:
 # Run the MNIST example
 run-example:
 	swift run MNISTExample
+
+# Run the deterministic custom tiny-decoder example
+run-tiny-decoder:
+	swift run TinyDecoderExample

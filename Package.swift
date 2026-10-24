@@ -22,6 +22,10 @@ let package = Package(
             name: "MNISTExample",
             targets: ["MNISTExample"]
         ),
+        .executable(
+            name: "TinyDecoderExample",
+            targets: ["TinyDecoderExample"]
+        ),
     ],
     dependencies: [
         .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.32.3"),
@@ -40,6 +44,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "MNISTExample",
+            dependencies: ["MLXKit"]
+        ),
+        .executableTarget(
+            name: "TinyDecoderExample",
             dependencies: ["MLXKit"]
         ),
         .testTarget(

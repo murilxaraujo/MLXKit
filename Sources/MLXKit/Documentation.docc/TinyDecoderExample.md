@@ -1,0 +1,37 @@
+# Tiny Decoder Example
+
+The `TinyDecoderExample` executable demonstrates one custom decoder-style
+model built with public MLX and MLXKit APIs. It uses a fixed local token pattern,
+sets the MLX random seed, trains with a custom next-token objective, and
+evaluates on held-out rows from the same deterministic fixture. It does not
+download data.
+
+Run it with the default configuration:
+
+```sh
+swift run TinyDecoderExample
+```
+
+The vocabulary size, hidden width, attention head count, maximum sequence
+length, and epoch count can be changed from the command line. The width must be
+divisible by the head count.
+
+```sh
+swift run TinyDecoderExample --vocab 24 --width 48 --heads 4 --sequence-length 10 --epochs 3
+```
+
+The model combines token and position embeddings, a causal multi-head
+self-attention module, residual connections, a feed-forward MLP, and a tied
+token-embedding output projection. Its custom objective computes mean
+cross-entropy over next-token logits. The example uses the typed model contract
+with `MLXArray` token inputs and logits, builds typed `Batch<MLXArray, MLXArray>`
+values, and passes a re-iterable asynchronous sequence to `TrainingEngine`.
+
+Training processes each complete sequence with a causal attention mask. It does
+not share mutable inference-cache state across differentiable forward passes.
+The example does not add a cache API; its fixed fixture and model are local to
+the executable, consistent with <doc:CustomModelState>.
+
+This small workload validates an implementation path and public API composition.
+It does not demonstrate large-scale language-model capability, production
+training, or performance.
