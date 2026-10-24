@@ -126,9 +126,10 @@ let trainingBatches = try DataLoader(
 ).prefetched(bufferSize: 2)
 ```
 
-These signatures are API sketches. The selected public names are in
-<doc:API2Design>. They show that transformation order is explicit and that
-prefetch has a visible finite bound.
+The implemented public names and signatures are in <doc:API2Design>. The
+streaming example shows that transformation order is explicit and prefetch has
+a visible finite bound. For runnable local examples and migration guidance, see
+<doc:DataPipeline>.
 
 ## Shuffle and reproducibility
 
@@ -154,9 +155,9 @@ cardinality, and the streaming read bound.
 - Source iteration is asynchronous and may throw. Upstream failures and
   collate/transform failures propagate through `fit`/`evaluate`; they are not
   treated as end-of-data or successful completion.
-- Task cancellation is propagated as `CancellationError`. M4 tests that
-  cancellation releases upstream iteration and does not leave prefetch work
-  unbounded.
+- Task cancellation is propagated as `CancellationError`. Prefetch cancels its
+  producer and releases its bounded buffer; prompt shutdown of an in-flight
+  upstream read requires a cancellation-cooperative source.
 - Prefetch is opt-in or explicitly configured with a finite capacity. It must
   apply backpressure and stop requesting upstream work when cancelled.
 - Unknown length is valid. APIs expose counts only when the source can provide
@@ -186,11 +187,11 @@ cancellation.
 - **Implicit full shuffle for all sources:** rejected. It can materialize an
   unbounded stream and gives misleading memory expectations.
 
-## Deferred to M4 and the integrated M1 design
+## Implementation status
 
 - M4 implements and tests transforms, collation, partial batches, indexed and
   bounded streaming shuffle, prefetch/backpressure, errors, and cancellation.
-- Issue #8 aligns the batch sequence with the `TrainingStep<Model, Batch>`
+- Issue #8 aligned the batch sequence with the `TrainingStep<Model, Batch>`
   extension point.
-- <doc:API2Design> records the selected Swift generic/throwing signatures and
-  migration guidance from the 1.x `Dataset` and `DataLoader` APIs.
+- <doc:API2Design> records the selected Swift generic/throwing signatures;
+  <doc:DataPipeline> provides the current 1.x data API migration guidance.

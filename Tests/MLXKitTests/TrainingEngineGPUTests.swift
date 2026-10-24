@@ -84,6 +84,31 @@ private func makeRegressionDataset(count: Int) -> InMemoryDataset {
     return InMemoryDataset(features: features, labels: labels)
 }
 
+private struct ReiterableMLXSampleSequence: AsyncSequence {
+    typealias Element = Sample<MLXArray, MLXArray>
+    typealias Failure = Never
+
+    let samples: [Element]
+
+    func makeAsyncIterator() -> Iterator {
+        Iterator(samples: samples)
+    }
+
+    struct Iterator: AsyncIteratorProtocol {
+        typealias Element = Sample<MLXArray, MLXArray>
+        typealias Failure = Never
+
+        let samples: [Element]
+        var offset = 0
+
+        mutating func next() async -> Element? {
+            guard offset < samples.count else { return nil }
+            defer { offset += 1 }
+            return samples[offset]
+        }
+    }
+}
+
 @Suite("TrainingEngine fit() (GPU)", .serialized)
 struct TrainingEngineFitGPUTests {
     @Test func earlyStopAtBatchEndCompletesAndRecordsOneEpoch() async throws {
@@ -475,6 +500,60 @@ struct TrainingEngineFitGPUTests {
             let difference = abs(actualParameter.1 - expectedParameter.1).max().item(Float.self)
             #expect(difference < 1e-5)
         }
+    }
+
+    @Test func asynchronousTypedPipelineWorksWithFitAndEvaluate() async throws {
+        let samples = (1...4).map { value in
+            Sample(
+                input: MLXArray([Float32(value)]),
+                target: MLXArray([Float32(value * 2)])
+            )
+        }
+        let transformedSource = ReiterableMLXSampleSequence(samples: samples)
+            .filter { $0.input.size > 0 }
+        let trainingBatches = try DataLoader(
+            source: transformedSource,
+            batchSize: 2,
+            collate: { samples in
+                Batch(
+                    input: stacked(samples.map(\.input)),
+                    target: stacked(samples.map(\.target)),
+                    sampleCount: samples.count
+                )
+            }
+        )
+        let prefetchedBatches = try trainingBatches.prefetched(bufferSize: 2)
+        let model = ScalarLinearModel()
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.01),
+            objective: MSELoss()
+        )
+
+        let history = try await TrainingEngine().fit(
+            model,
+            configuration: configuration,
+            data: prefetchedBatches,
+            epochs: 1
+        )
+        #expect(history["loss"].first != nil)
+
+        let evaluationBatches = try DataLoader(
+            source: ReiterableMLXSampleSequence(samples: samples),
+            batchSize: 3,
+            collate: { samples in
+                Batch(
+                    input: stacked(samples.map(\.input)),
+                    target: stacked(samples.map(\.target)),
+                    sampleCount: samples.count
+                )
+            }
+        )
+        let metrics = try await TrainingEngine().evaluate(
+            model,
+            configuration: configuration,
+            data: evaluationBatches
+        )
+        #expect(metrics["loss"]?.isFinite == true)
     }
 
     @Test func lossDecreasesOverEpochs() async throws {

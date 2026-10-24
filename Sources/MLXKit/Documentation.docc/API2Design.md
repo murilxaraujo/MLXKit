@@ -1,10 +1,10 @@
 # MLXKit 2.0 Public API Design
 
-**Status:** integrated M1 design and M2 implementation record. The core typed
-training, objective/metric, schedule, and lifecycle contracts are implemented.
-The generalized sample-source ``DataLoader`` shown below is future M4 design;
-the current M2 engine consumes asynchronous sequences of already-built typed
-``Batch`` values. This page is not a final 2.0 compatibility promise.
+**Status:** integrated M1 design and M2/M4 implementation record. The typed
+training, objective/metric, schedule, lifecycle, and sample-to-batch pipeline
+contracts described here are implemented. The training engine continues to
+consume asynchronous sequences of already-built typed ``Batch`` values. This
+page is not a final 2.0 compatibility promise.
 
 Detailed contract notes are in <doc:M1ModelContract>,
 <doc:M1ObjectiveMetricContract>, <doc:M1TrainingWorkflow>, and
@@ -305,7 +305,10 @@ before batching. Streaming shuffle keeps a fixed-size window and never
 materializes the complete source. The same source order, seed, and implementation
 version produce the same shuffle order; cross-version and cross-device identity
 is not promised. Upstream, transform, and collate failures propagate. Bounded
-prefetch and its cancellation/cleanup semantics are specified separately in M4.
+prefetch preserves order, reserves capacity before advancing upstream, and
+cancels its producer on consumer cancellation or early iterator disposal. Prompt
+cancellation of an in-flight upstream read requires a cooperative source; see
+<doc:DataPipeline>.
 
 ```swift
 public enum ShuffleStrategy {
@@ -448,10 +451,10 @@ remain owned by MLXKit.
 
 ## 1.x to 2.0 migration map
 
-No compatibility shims are proposed in this design. Pre-2.0 source breaks are
-allowed by <doc:CompatibilityPolicy>; the 2.0 release must provide a fuller
-before-and-after migration guide. Do not assume checkpoint files are portable
-across versions; M6 owns the artifact policy.
+No compatibility shims are provided for the data API. Pre-2.0 source breaks
+are allowed by <doc:CompatibilityPolicy>. The M4 data API migration is in
+<doc:DataPipeline>; the remaining API changes are mapped below. Do not assume
+checkpoint files are portable across versions; M6 owns the artifact policy.
 
 | 1.x surface | 2.0 direction | Migration action / behavior change |
 |---|---|---|
@@ -461,9 +464,9 @@ across versions; M6 owns the artifact policy.
 | `Reduction.none` passed to `fit` | Direct unreduced evaluation plus explicit scalar reduction for training | Add a reduction in user objective code or choose `.mean`/`.sum`; `fit` rejects non-scalar output instead of attempting scalar extraction. |
 | `Metric` over two `MLXArray`s | `Metric<Output, Target>` with `update`/`compute`/`reset` | Update conformances and choose a stable unique scalar result name. |
 | `RunningLoss` as a `Metric` | Trainer-owned `loss` reporting | Remove `RunningLoss` from metric arrays; `History["loss"]` remains a trainer log. |
-| `Dataset: RandomAccessCollection` with `features`/`labels` | Async sample source; optional random-access capability | Custom sources yield `Sample<Input, Target>` and may have unknown length. |
+| `Dataset: RandomAccessCollection` with `features`/`labels` | Generic async sample source; optional random-access capability; `InMemoryDataset` for array data | Keep the simple path with `InMemoryDataset`; custom sources yield `Sample<Input, Target>` and may have unknown length. |
 | `Sample`/`Batch` with fixed `features`/`labels: MLXArray` | Generic `Sample<Input, Target>` and `Batch<Input, Target>` | Move model inputs/targets into typed values; provide a collate closure for custom structured samples. |
-| `DataLoader(dataset:batchSize:shuffle:dropLast:)` with boolean shuffle | Typed `DataLoader<Input, Target>` over sample sources | Replace the boolean with an explicit seeded strategy; add collate for structured data. Streams can use bounded shuffle and prefetch. |
+| `DataLoader(dataset:batchSize:shuffle:dropLast:)` with boolean shuffle | Typed `DataLoader<Input, Target>` over sample sources | Use `source:` and an explicit strategy (`.none`, `.full(seed:)`, or `.buffered(windowSize:seed:)`); add collate for structured data. Streams can use bounded shuffle and prefetch. |
 | `Metric.update(predictions:targets:)` | `update(output:target:)` with full typed model output | Select output fields inside a metric rather than narrowing the model output. |
 | `predict(input: MLXArray) -> MLXArray` | `predict(input: Model.Input) -> Model.Output` | Update call sites and handle the full structured output type where applicable. |
 | Concrete optimizer casts for schedules | Optional `LearningRateControllable` capability | Custom optimizer integrations conform explicitly; unsupported schedule/optimizer combinations fail clearly. |
@@ -512,8 +515,9 @@ The review checks <doc:ProductScope>, <doc:MLXKitAndMLX>,
   accounting, and deterministic integration tests.
 - **M3:** custom architecture guides, state/cache boundaries, and gradient
   correctness examples.
-- **M4:** concrete data transforms, collate/padding, shuffle reproducibility,
-  bounded prefetch/backpressure, and stream cancellation tests.
+- **M4 complete:** concrete data transforms, collate/padding, shuffle
+  reproducibility, bounded prefetch/backpressure, streaming and in-memory
+  examples, migration guidance, and stream cancellation tests.
 - **M5:** gradient transforms, clipping, accumulation, sample weighting, and
   update controls beyond one MLX optimizer update per batch.
 - **M6:** weight/export/resume artifact formats and checkpoint compatibility.

@@ -1,4 +1,4 @@
-.PHONY: build test test-gpu test-all clean docs docs-preview run-example run-tiny-decoder
+.PHONY: build test test-gpu test-all clean docs docs-preview run-example run-tiny-decoder run-data-pipeline
 
 # Build the library
 build:
@@ -40,3 +40,7 @@ run-example:
 # Run the deterministic custom tiny-decoder example
 run-tiny-decoder:
 	swift run TinyDecoderExample
+
+# Run the local in-memory and streaming data-pipeline example
+run-data-pipeline:
+	swift run DataPipelineExample

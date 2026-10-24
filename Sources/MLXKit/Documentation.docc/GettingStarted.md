@@ -74,6 +74,9 @@ let history = try await engine.fit(
 )
 ```
 
+For in-memory and unknown-length streaming sources, including batching,
+shuffle, prefetch, and migration details, see <doc:DataPipeline>.
+
 ### Evaluating and Predicting
 
 ```swift

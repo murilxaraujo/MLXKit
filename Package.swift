@@ -26,6 +26,10 @@ let package = Package(
             name: "TinyDecoderExample",
             targets: ["TinyDecoderExample"]
         ),
+        .executable(
+            name: "DataPipelineExample",
+            targets: ["DataPipelineExample"]
+        ),
     ],
     dependencies: [
         .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.32.3"),
@@ -57,6 +61,15 @@ let package = Package(
         .executableTarget(
             name: "TinyDecoderExample",
             dependencies: ["MLXKit", "TinyDecoderCore"]
+        ),
+        .executableTarget(
+            name: "DataPipelineExample",
+            dependencies: [
+                "MLXKit",
+                .product(name: "MLX", package: "mlx-swift"),
+                .product(name: "MLXNN", package: "mlx-swift"),
+                .product(name: "MLXOptimizers", package: "mlx-swift"),
+            ]
         ),
         .testTarget(
             name: "MLXKitTests",
