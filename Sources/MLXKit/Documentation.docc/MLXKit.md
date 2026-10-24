@@ -36,10 +36,13 @@ let history = try await engine.fit(
 - <doc:CompatibilityPolicy>
 - <doc:ReferenceWorkloads>
 - <doc:M2TrainingSemantics>
+- <doc:CustomModelState>
+- <doc:TinyDecoderExample>
 - <doc:M1ModelContract>
 - <doc:M1ObjectiveMetricContract>
 - <doc:M1TrainingWorkflow>
 - <doc:M1DataContract>
+- <doc:DataPipeline>
 - <doc:GettingStarted>
 - <doc:Architecture>
 
@@ -77,6 +80,10 @@ let history = try await engine.fit(
 - ``Batch``
 - ``InMemoryDataset``
 - ``DataLoader``
+- ``DataLoaderError``
+- ``ShuffleStrategy``
+- ``PrefetchedSequence``
+- ``PrefetchError``
 
 ### Callbacks
 

@@ -1,4 +1,4 @@
-.PHONY: build test test-gpu test-all clean docs docs-preview run-example
+.PHONY: build test test-gpu test-all clean docs docs-preview run-example run-tiny-decoder run-data-pipeline
 
 # Build the library
 build:
@@ -36,3 +36,11 @@ docs-preview:
 # Run the MNIST example
 run-example:
 	swift run MNISTExample
+
+# Run the deterministic custom tiny-decoder example
+run-tiny-decoder:
+	swift run TinyDecoderExample
+
+# Run the local in-memory and streaming data-pipeline example
+run-data-pipeline:
+	swift run DataPipelineExample

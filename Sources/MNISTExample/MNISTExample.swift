@@ -74,8 +74,12 @@ struct MNISTExample {
         // 4. Create data loaders
         let trainData = makeSyntheticData(count: 500)
         let valData = makeSyntheticData(count: 100)
-        let trainLoader = DataLoader(dataset: trainData, batchSize: 32, shuffle: true)
-        let valLoader = DataLoader(dataset: valData, batchSize: 32)
+        let trainLoader = try DataLoader(
+            source: trainData,
+            batchSize: 32,
+            shuffle: .full(seed: 42)
+        )
+        let valLoader = try DataLoader(source: valData, batchSize: 32)
 
         // 5. Fit with callbacks
         print("Training...")

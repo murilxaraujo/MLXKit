@@ -32,13 +32,13 @@ tensor operations, autodiff, model parameters, and device execution.
 | ``Dataset`` / ``DataLoader`` | Existing array-backed sample batching for MLX arrays. |
 | ``Checkpointing`` | Persist and restore MLX model weights. |
 
-## M2 sequence boundary and deferred data pipeline
+## M2 sequence boundary and M4 data pipeline
 
 M2 training accepts an `AsyncSequence` whose elements are already typed
-``Batch`` values. ``InMemoryDataset`` and ``DataLoader`` remain the current
-array-backed convenience path. The generalized typed sample-source loader,
-collation, transforms, bounded shuffle, prefetch, and backpressure are deferred
-to M4; see <doc:M1DataContract> for that design boundary.
+``Batch`` values. M4's typed ``DataLoader`` builds those batches from indexed or
+asynchronous sample sources, with transforms, seeded shuffle, collation, and
+optional bounded prefetch. See <doc:DataPipeline> for examples and the source,
+ordering, error, and cancellation contracts.
 
 For scalar reduction, epoch aggregation, metric timing, schedules, lifecycle,
 failure behavior, and model-mode restoration, see <doc:M2TrainingSemantics>.

@@ -84,6 +84,31 @@ private func makeRegressionDataset(count: Int) -> InMemoryDataset {
     return InMemoryDataset(features: features, labels: labels)
 }
 
+private struct ReiterableMLXSampleSequence: AsyncSequence {
+    typealias Element = Sample<MLXArray, MLXArray>
+    typealias Failure = Never
+
+    let samples: [Element]
+
+    func makeAsyncIterator() -> Iterator {
+        Iterator(samples: samples)
+    }
+
+    struct Iterator: AsyncIteratorProtocol {
+        typealias Element = Sample<MLXArray, MLXArray>
+        typealias Failure = Never
+
+        let samples: [Element]
+        var offset = 0
+
+        mutating func next() async -> Element? {
+            guard offset < samples.count else { return nil }
+            defer { offset += 1 }
+            return samples[offset]
+        }
+    }
+}
+
 @Suite("TrainingEngine fit() (GPU)", .serialized)
 struct TrainingEngineFitGPUTests {
     @Test func earlyStopAtBatchEndCompletesAndRecordsOneEpoch() async throws {
@@ -91,8 +116,8 @@ struct TrainingEngineFitGPUTests {
         model.train(false)
         let inputs = MLXArray([1.0, 2.0, 3.0, 4.0] as [Float32]).reshaped([4, 1])
         let targets = MLXArray.zeros([4, 1])
-        let loader = DataLoader(
-            dataset: InMemoryDataset(features: inputs, labels: targets),
+        let loader = try DataLoader(
+            source: InMemoryDataset(features: inputs, labels: targets),
             batchSize: 1
         )
         let recorder = LifecycleRecorder()
@@ -121,8 +146,8 @@ struct TrainingEngineFitGPUTests {
         model.train(false)
         let inputs = MLXArray([1.0, 2.0] as [Float32]).reshaped([2, 1])
         let targets = MLXArray.zeros([2, 1])
-        let loader = DataLoader(
-            dataset: InMemoryDataset(features: inputs, labels: targets),
+        let loader = try DataLoader(
+            source: InMemoryDataset(features: inputs, labels: targets),
             batchSize: 2
         )
         let recorder = LifecycleRecorder()
@@ -150,8 +175,8 @@ struct TrainingEngineFitGPUTests {
         model.train(false)
         let inputs = MLXArray([1.0, 2.0] as [Float32]).reshaped([2, 1])
         let targets = MLXArray.zeros([2, 1])
-        let loader = DataLoader(
-            dataset: InMemoryDataset(features: inputs, labels: targets),
+        let loader = try DataLoader(
+            source: InMemoryDataset(features: inputs, labels: targets),
             batchSize: 2
         )
         let before = model.trainableParameters().flattened()[0].1.item(Float.self)
@@ -183,8 +208,8 @@ struct TrainingEngineFitGPUTests {
         let model = ScalarLinearModel()
         let inputs = MLXArray.zeros([2, 1])
         let targets = MLXArray.zeros([2, 1])
-        let loader = DataLoader(
-            dataset: InMemoryDataset(features: inputs, labels: targets),
+        let loader = try DataLoader(
+            source: InMemoryDataset(features: inputs, labels: targets),
             batchSize: 2
         )
         let before = model.trainableParameters().flattened()[0].1.item(Float.self)
@@ -215,8 +240,8 @@ struct TrainingEngineFitGPUTests {
         let model = ScalarLinearModel()
         let inputs = MLXArray([1.0] as [Float32]).reshaped([1, 1])
         let targets = MLXArray.zeros([1, 1])
-        let loader = DataLoader(
-            dataset: InMemoryDataset(features: inputs, labels: targets),
+        let loader = try DataLoader(
+            source: InMemoryDataset(features: inputs, labels: targets),
             batchSize: 1
         )
         let terminalCalls = LockedInt()
@@ -249,8 +274,8 @@ struct TrainingEngineFitGPUTests {
         let model = ScalarLinearModel()
         let inputs = MLXArray([1.0] as [Float32]).reshaped([1, 1])
         let targets = MLXArray.zeros([1, 1])
-        let loader = DataLoader(
-            dataset: InMemoryDataset(features: inputs, labels: targets),
+        let loader = try DataLoader(
+            source: InMemoryDataset(features: inputs, labels: targets),
             batchSize: 1
         )
         let callback = LambdaCallback(
@@ -280,8 +305,8 @@ struct TrainingEngineFitGPUTests {
         let model = ScalarLinearModel()
         let inputs = MLXArray([1.0, 2.0, 3.0] as [Float32]).reshaped([3, 1])
         let targets = MLXArray.zeros([3, 1])
-        let loader = DataLoader(
-            dataset: InMemoryDataset(features: inputs, labels: targets),
+        let loader = try DataLoader(
+            source: InMemoryDataset(features: inputs, labels: targets),
             batchSize: 2
         )
         let optimizer = SGD(learningRate: 0.5)
@@ -307,8 +332,8 @@ struct TrainingEngineFitGPUTests {
         let model = ScalarLinearModel()
         let inputs = MLXArray([1.0, 2.0] as [Float32]).reshaped([2, 1])
         let targets = MLXArray.zeros([2, 1])
-        let loader = DataLoader(
-            dataset: InMemoryDataset(features: inputs, labels: targets),
+        let loader = try DataLoader(
+            source: InMemoryDataset(features: inputs, labels: targets),
             batchSize: 2
         )
         let optimizer = SGD(learningRate: 0.5)
@@ -333,8 +358,8 @@ struct TrainingEngineFitGPUTests {
         let model = ScalarLinearModel()
         let inputs = MLXArray([1.0, 1.0, 10.0] as [Float32]).reshaped([3, 1])
         let targets = MLXArray.zeros([3, 1])
-        let loader = DataLoader(
-            dataset: InMemoryDataset(features: inputs, labels: targets),
+        let loader = try DataLoader(
+            source: InMemoryDataset(features: inputs, labels: targets),
             batchSize: 2
         )
         let configuration = TrainingConfiguration(
@@ -360,8 +385,8 @@ struct TrainingEngineFitGPUTests {
         let model = ScalarLinearModel()
         let inputs = MLXArray([1.0, 2.0] as [Float32]).reshaped([2, 1])
         let targets = MLXArray.zeros([2, 1])
-        let loader = DataLoader(
-            dataset: InMemoryDataset(features: inputs, labels: targets),
+        let loader = try DataLoader(
+            source: InMemoryDataset(features: inputs, labels: targets),
             batchSize: 2
         )
         let before = TrainingEngine().predict(model, input: inputs).mean().item(Float.self)
@@ -387,8 +412,8 @@ struct TrainingEngineFitGPUTests {
         let model = ScalarLinearModel()
         let inputs = MLXArray([1.0, 2.0] as [Float32]).reshaped([2, 1])
         let targets = MLXArray.zeros([2, 1])
-        let loader = DataLoader(
-            dataset: InMemoryDataset(features: inputs, labels: targets),
+        let loader = try DataLoader(
+            source: InMemoryDataset(features: inputs, labels: targets),
             batchSize: 2
         )
         let configuration = TrainingConfiguration(
@@ -413,8 +438,8 @@ struct TrainingEngineFitGPUTests {
         let model = ScalarLinearModel()
         let inputs = MLXArray([1.0, 2.0] as [Float32]).reshaped([2, 1])
         let targets = MLXArray.zeros([2, 1])
-        let loader = DataLoader(
-            dataset: InMemoryDataset(features: inputs, labels: targets),
+        let loader = try DataLoader(
+            source: InMemoryDataset(features: inputs, labels: targets),
             batchSize: 2
         )
         let configuration = TrainingConfiguration(
@@ -442,8 +467,8 @@ struct TrainingEngineFitGPUTests {
         let directModel = ScalarLinearModel()
         let inputs = MLXArray([1.0, 2.0, 3.0, 4.0] as [Float32]).reshaped([4, 1])
         let targets = MLXArray([2.0, 4.0, 6.0, 8.0] as [Float32]).reshaped([4, 1])
-        let loader = DataLoader(
-            dataset: InMemoryDataset(features: inputs, labels: targets),
+        let loader = try DataLoader(
+            source: InMemoryDataset(features: inputs, labels: targets),
             batchSize: 4
         )
         let engineOptimizer = SGD(learningRate: 0.02)
@@ -477,6 +502,60 @@ struct TrainingEngineFitGPUTests {
         }
     }
 
+    @Test func asynchronousTypedPipelineWorksWithFitAndEvaluate() async throws {
+        let samples = (1...4).map { value in
+            Sample(
+                input: MLXArray([Float32(value)]),
+                target: MLXArray([Float32(value * 2)])
+            )
+        }
+        let transformedSource = ReiterableMLXSampleSequence(samples: samples)
+            .filter { $0.input.size > 0 }
+        let trainingBatches = try DataLoader(
+            source: transformedSource,
+            batchSize: 2,
+            collate: { samples in
+                Batch(
+                    input: stacked(samples.map(\.input)),
+                    target: stacked(samples.map(\.target)),
+                    sampleCount: samples.count
+                )
+            }
+        )
+        let prefetchedBatches = try trainingBatches.prefetched(bufferSize: 2)
+        let model = ScalarLinearModel()
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.01),
+            objective: MSELoss()
+        )
+
+        let history = try await TrainingEngine().fit(
+            model,
+            configuration: configuration,
+            data: prefetchedBatches,
+            epochs: 1
+        )
+        #expect(history["loss"].first != nil)
+
+        let evaluationBatches = try DataLoader(
+            source: ReiterableMLXSampleSequence(samples: samples),
+            batchSize: 3,
+            collate: { samples in
+                Batch(
+                    input: stacked(samples.map(\.input)),
+                    target: stacked(samples.map(\.target)),
+                    sampleCount: samples.count
+                )
+            }
+        )
+        let metrics = try await TrainingEngine().evaluate(
+            model,
+            configuration: configuration,
+            data: evaluationBatches
+        )
+        #expect(metrics["loss"]?.isFinite == true)
+    }
+
     @Test func lossDecreasesOverEpochs() async throws {
         let model = ScalarLinearModel()
         let engine = TrainingEngine()
@@ -486,7 +565,7 @@ struct TrainingEngineFitGPUTests {
         )
 
         let dataset = makeRegressionDataset(count: 8)
-        let loader = DataLoader(dataset: dataset, batchSize: 4)
+        let loader = try DataLoader(source: dataset, batchSize: 4)
 
         let history = try await engine.fit(
             model, configuration: config, data: loader, epochs: 8
@@ -508,7 +587,7 @@ struct TrainingEngineFitGPUTests {
         )
 
         let dataset = makeRegressionDataset(count: 4)
-        let loader = DataLoader(dataset: dataset, batchSize: 4)
+        let loader = try DataLoader(source: dataset, batchSize: 4)
 
         let history = try await engine.fit(
             model, configuration: config, data: loader, epochs: 5
@@ -529,7 +608,7 @@ struct TrainingEngineFitGPUTests {
         )
 
         let dataset = makeRegressionDataset(count: 8)
-        let loader = DataLoader(dataset: dataset, batchSize: 4)
+        let loader = try DataLoader(source: dataset, batchSize: 4)
 
         // Use a callback that stops after 3 epochs
         let stopper = LambdaCallback(onEpochEnd: { state in
@@ -558,8 +637,8 @@ struct TrainingEngineFitGPUTests {
 
         let trainData = makeRegressionDataset(count: 8)
         let valData = makeRegressionDataset(count: 4)
-        let trainLoader = DataLoader(dataset: trainData, batchSize: 4)
-        let valLoader = DataLoader(dataset: valData, batchSize: 2)
+        let trainLoader = try DataLoader(source: trainData, batchSize: 4)
+        let valLoader = try DataLoader(source: valData, batchSize: 2)
 
         let history = try await engine.fit(
             model, configuration: config, data: trainLoader,
@@ -595,7 +674,7 @@ struct TrainingEngineEvaluateGPUTests {
         )
 
         let dataset = makeRegressionDataset(count: 8)
-        let loader = DataLoader(dataset: dataset, batchSize: 4)
+        let loader = try DataLoader(source: dataset, batchSize: 4)
 
         let metrics = try await engine.evaluate(model, configuration: config, data: loader)
         #expect(metrics["loss"] != nil)

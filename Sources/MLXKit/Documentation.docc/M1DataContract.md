@@ -58,7 +58,7 @@ source to participate in training.
 Batching custom data uses a throwing collate closure:
 
 ```swift
-let batches = DataLoader(source: source, batchSize: 32, dropLast: false) { samples in
+let batches = try DataLoader(source: source, batchSize: 32, dropLast: false) { samples in
     Batch(
         input: EncoderInput(
             tokenIDs: stack(samples.map { $0.input.tokenIDs }),
@@ -81,16 +81,24 @@ sample type may be batched differently for padding, bucketing, multi-view
 training, or evaluation. An explicit collate closure keeps that choice at the
 pipeline call site and avoids another global structural protocol.
 
-Batch size, incomplete-final-batch handling, ordering of mapping/filtering/
-batching, and the exact collate-error diagnostics are configured at the
-pipeline boundary. M4 owns their precise runtime semantics and tests.
+`DataLoader` validates a positive batch size at construction. It emits no batch
+for an empty source, emits a smaller final batch when `dropLast` is `false`, and
+discards that final partial batch when `dropLast` is `true`. It verifies that a
+collator's `sampleCount` equals the actual number of supplied samples; a
+mismatch throws `DataLoaderError.collatedSampleCountMismatch` rather than
+emitting an inaccurate batch.
+
+Sample transforms are explicit and ordered in the source sequence, for example
+`source.map(...).filter(...)`. The loader then applies its shuffle strategy and
+batches the resulting samples. Collation and transform errors propagate from
+the loader's throwing asynchronous iteration.
 
 ## In-memory and streaming examples
 
 The usual array-backed classifier remains concise:
 
 ```swift
-let trainingBatches = DataLoader(
+let trainingBatches = try DataLoader(
     source: InMemoryDataset(inputs: imageArrays, targets: classIDs),
     batchSize: 32,
     shuffle: .full(seed: 42),
@@ -109,7 +117,7 @@ let preparedSamples = stream
     .map(normalizeTokens)
     .filter(isUsable)
 
-let trainingBatches = DataLoader(
+let trainingBatches = try DataLoader(
     source: preparedSamples,
     batchSize: 32,
     shuffle: .buffered(windowSize: 512, seed: 42),
@@ -118,42 +126,53 @@ let trainingBatches = DataLoader(
 ).prefetched(bufferSize: 2)
 ```
 
-These signatures are API sketches. The selected public names are in
-<doc:API2Design>. They show that transformation order is explicit and that
-prefetch has a visible finite bound.
+The implemented public names and signatures are in <doc:API2Design>. The
+streaming example shows that transformation order is explicit and prefetch has
+a visible finite bound. For runnable local examples and migration guidance, see
+<doc:DataPipeline>.
 
 ## Shuffle and reproducibility
 
 Random access is optional, so shuffle policy is explicit:
 
-- Indexed sources can use a full seeded permutation without loading or
-  reshuffling tensor data.
+- Indexed sources can use a full seeded permutation of indices without copying
+  or reshuffling tensor data. An unshuffled indexed source does not allocate a
+  permutation.
 - Streaming sources use a bounded seeded shuffle buffer/window. This is an
   approximate streaming shuffle; it must not silently read the entire stream
   into memory.
-- A seed is user-configurable. M4 documents the reproducibility scope,
-  including source order, seed, implementation/version, and limits across
-  devices or releases.
+- The same source order, seed, and implementation version produce the same
+  order. Cross-version and cross-device identity is not promised.
 
-The pipeline makes shuffle position relative to mapping, filtering, and batching
-visible. M4 defines ordering guarantees and verifies them with deterministic
-tests.
+Both strategies shuffle samples before batching. For a stream, the bounded
+window is filled before the first sample is emitted; each later sample replaces
+one selected window entry. `full(seed:)` is rejected for a non-indexed async
+source before the source is read. Deterministic tests verify ordering,
+cardinality, and the streaming read bound.
 
 ## Cancellation, errors, and prefetch
 
 - Source iteration is asynchronous and may throw. Upstream failures and
   collate/transform failures propagate through `fit`/`evaluate`; they are not
   treated as end-of-data or successful completion.
-- Task cancellation is propagated as `CancellationError`. M4 tests that
-  cancellation releases upstream iteration and does not leave prefetch work
-  unbounded.
+- Task cancellation is propagated as `CancellationError`. Prefetch cancels its
+  producer and releases its bounded buffer; prompt shutdown of an in-flight
+  upstream read requires a cancellation-cooperative source.
 - Prefetch is opt-in or explicitly configured with a finite capacity. It must
   apply backpressure and stop requesting upstream work when cancelled.
 - Unknown length is valid. APIs expose counts only when the source can provide
   them; training must not require `totalBatches` to be known.
 
-M4 defines exact error types, cancellation checkpoints, buffer bounds,
-backpressure behavior, and cleanup guarantees.
+M4 issue #23 defines batching/shuffle configuration errors and source ordering.
+`prefetched(bufferSize:)` preserves order and limits unconsumed elements to the
+configured capacity. The producer reserves a buffer slot before requesting the
+next upstream element; a consumer request for another element releases the slot
+held by the previously delivered element. This applies backpressure without
+timing-dependent polling. Exhaustion finishes normally, and upstream errors
+propagate once. Cancellation or early iterator destruction cancels the
+pipeline-owned producer task and closes its demand channel. Prompt cancellation
+of an in-flight source read depends on that source cooperating with task
+cancellation.
 
 ## Alternatives and rationale
 
@@ -168,11 +187,11 @@ backpressure behavior, and cleanup guarantees.
 - **Implicit full shuffle for all sources:** rejected. It can materialize an
   unbounded stream and gives misleading memory expectations.
 
-## Deferred to M4 and the integrated M1 design
+## Implementation status
 
 - M4 implements and tests transforms, collation, partial batches, indexed and
   bounded streaming shuffle, prefetch/backpressure, errors, and cancellation.
-- Issue #8 aligns the batch sequence with the `TrainingStep<Model, Batch>`
+- Issue #8 aligned the batch sequence with the `TrainingStep<Model, Batch>`
   extension point.
-- <doc:API2Design> records the selected Swift generic/throwing signatures and
-  migration guidance from the 1.x `Dataset` and `DataLoader` APIs.
+- <doc:API2Design> records the selected Swift generic/throwing signatures;
+  <doc:DataPipeline> provides the current 1.x data API migration guidance.
