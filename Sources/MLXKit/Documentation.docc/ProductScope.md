@@ -124,6 +124,7 @@ decided in their respective milestones.
 
 ## M1 design work
 
+- <doc:API2Design> integrates the M1 contracts and 1.x-to-2.0 migration map.
 - <doc:M1ModelContract> records the approved model-contract direction for M1.
   The integrated API design and migration map remain in progress; this is not
   the final 2.0 API promise.

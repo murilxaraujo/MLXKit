@@ -31,6 +31,7 @@ let history = try await engine.fit(
 ### Essentials
 
 - <doc:ProductScope>
+- <doc:API2Design>
 - <doc:MLXKitAndMLX>
 - <doc:PlatformSupport>
 - <doc:CompatibilityPolicy>

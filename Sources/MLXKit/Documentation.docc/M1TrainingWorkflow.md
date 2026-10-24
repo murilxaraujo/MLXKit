@@ -4,15 +4,15 @@
 typed by model output and target; a custom training step replaces only
 per-batch scalar-objective computation; MLXKit retains differentiation,
 optimizer updates, and lifecycle; optimizer schedules use a capability bridge
-instead of concrete-type inspection; callbacks may throw synchronously. Exact
-public signatures remain part of the integrated M1 design.
+instead of concrete-type inspection; callbacks may throw synchronously. The
+integrated names and signatures are in <doc:API2Design>, pending pair approval.
 
 ## Standard workflow
 
-The common workflow configures an MLX optimizer, a typed objective, optional
-typed metrics, and an optional schedule. Training and prediction still receive
-the model explicitly; the configuration stores the training choices, not a
-hidden model instance.
+The common workflow builds a typed `TrainingConfiguration` value from an MLX
+optimizer, objective, optional metrics, and optional schedule. Training and
+prediction still receive the model explicitly; the configuration stores the
+training choices, not a hidden model instance.
 
 ```swift
 let model = Classifier() // Module, TrainableModel; Input/Output are MLXArray
@@ -25,8 +25,7 @@ let objective = ClosureObjective<MLXArray, MLXArray> { logits, labels in
     )
 }
 
-let configuration = engine.compile(
-    model: model,
+let configuration = TrainingConfiguration(
     optimizer: Adam(learningRate: 1e-3),
     objective: objective,
     metrics: [Accuracy()]
@@ -59,8 +58,8 @@ These are proposed public signatures, not compilable examples against MLXKit
 contract example is in <doc:M1ModelContract>.
 
 The example preserves a discoverable configure/fit workflow without requiring
-the model to store its configuration. A lower-level user can construct the
-configuration directly if a `compile` helper is not useful.
+the model to store its configuration or passing the model to an API that only
+builds configuration.
 
 ## Custom training-step boundary
 
@@ -191,13 +190,14 @@ and whether terminal callbacks run after cancellation or callback failure.
   source of optimizer algorithms; the optional rate-control capability only
   describes one optional property of an optimizer.
 
-## Deferred to the integrated M1 design and M2
+## Deferred to M2 and later milestones
 
-- Issue #12 chooses final naming and exact generic/configuration signatures,
-  including whether the current `TrainingEngine.compile` helper remains.
 - Issue #11 defines the batch type consumed by `TrainingStep`.
 - M2 defines callback ordering, cancellation checkpoints, early-stop timing,
   typed errors, optimizer schedule step counts, metric output reuse, and
   integration tests.
 - M5 owns gradient controls and training controls beyond one MLX gradient and
   one configured optimizer update per batch.
+
+The integrated names and signatures are in <doc:API2Design>, pending pair
+approval.

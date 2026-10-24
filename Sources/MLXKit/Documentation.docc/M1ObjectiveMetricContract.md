@@ -3,9 +3,8 @@
 **Status:** pair-approved direction for issue #9: typed objectives support both
 reusable conforming types and a closure-backed form; metrics are typed over
 model output and target; the trainer reports loss separately from metrics; an
-unreduced `.none` loss requires an explicit reduction before training. The
-integrated M1 API design is still in progress, so these are not final 2.0 API
-signatures.
+unreduced `.none` loss requires an explicit reduction before training. Final
+names and composition are in <doc:API2Design>, pending pair approval.
 
 Code snippets are API sketches. They assume `import MLX`, `import MLXNN`, and
 `import MLXKit`; they do not compile against the current 1.x API.
@@ -101,10 +100,8 @@ The closure-backed form and conforming form must share the same typed contract;
 they must not create separate training behaviors. Exact public names and
 initializers remain subject to the integrated M1 review.
 
-The protocol and adapter above are illustrative signatures. The integrated
-design must ensure the adapter's generic type parameters are inferred without
-requiring redundant aliases; they are shown explicitly here only to expose the
-type relationship.
+The protocol and adapter above are illustrative signatures; see
+<doc:API2Design> for the selected names and generic relationships.
 
 ## Objective contract and reductions
 
@@ -215,14 +212,14 @@ defines empty-input and aggregation semantics for the production API.
   the M0 compatibility policy. The integrated API design must record these
   source changes and migration guidance.
 
-## Decisions deferred to M2 and the integrated M1 review
+## Decisions deferred to M2 and later milestones
 
 - M2 tests scalar objective validation, reduction and sample-weighting
   semantics, metric aggregation for uneven batches, and failure behavior.
 - M1 issue #8 aligns objective and metric generic types with model and target
   types in the training configuration.
-- The integrated issue #12 design selects final names, type erasure/storage
-  details, concurrency constraints, and migration examples.
+- <doc:API2Design> selects the integrated names, type-erasure/storage direction,
+  concurrency constraints, and migration map; its pair review is still open.
 - Metrics remain scalar in this initial design. Non-scalar metric results would
   require a separately reviewed logging/result model rather than an implicit
   conversion to `Float`.

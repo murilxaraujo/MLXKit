@@ -107,6 +107,7 @@ See the [Makefile](Makefile) for all available commands.
 
 Full API documentation is available at **[murilxaraujo.github.io/MLXKit](https://murilxaraujo.github.io/MLXKit/documentation/mlxkit)**.
 Read the [MLXKit 2.0 product scope](Sources/MLXKit/Documentation.docc/ProductScope.md) for its target users, product goals, non-goals, and roadmap success criteria.
+See the draft [MLXKit 2.0 API design and migration map](Sources/MLXKit/Documentation.docc/API2Design.md) for the integrated M1 proposal. This design is not the current 1.x API reference.
 See the [platform support matrix](Sources/MLXKit/Documentation.docc/PlatformSupport.md), [compatibility policy](Sources/MLXKit/Documentation.docc/CompatibilityPolicy.md), [MLX responsibility boundary](Sources/MLXKit/Documentation.docc/MLXKitAndMLX.md), and [reference workload plan](Sources/MLXKit/Documentation.docc/ReferenceWorkloads.md) for the M0 product contract.
 
 To build locally:

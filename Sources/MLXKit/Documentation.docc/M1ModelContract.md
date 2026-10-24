@@ -1,11 +1,11 @@
 # M1 Model Contract — Working Draft
 
-**Status:** approved model-contract direction for issue #10. The typed I/O direction,
-`callAsFunction`, and boundary-only `Sendable` constraints have been selected
-for the draft through pair review. User-defined Swift I/O types are allowed
-without a required tensor-tree protocol, and one `Output` type is shared by
-training and inference. The integrated M1 API design is pending issue #12, so
-this is not yet a final 2.0 API promise.
+**Status:** approved model-contract direction for issue #10. The typed I/O
+direction, `callAsFunction`, and boundary-only `Sendable` constraints have been
+selected through pair review. User-defined Swift I/O types are allowed without
+a required tensor-tree protocol, and one `Output` type is shared by training
+and inference. The integrated design is in <doc:API2Design> and remains subject
+to final pair approval; this is not yet a final 2.0 API promise.
 
 This draft compares an array-only model contract with a typed input/output
 contract. The working direction is the typed contract: it keeps the ordinary

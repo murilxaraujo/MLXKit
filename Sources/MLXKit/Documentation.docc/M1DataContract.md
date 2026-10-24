@@ -4,8 +4,8 @@
 samples; batching is an explicit pipeline stage; structured samples use a
 throwing collate closure rather than a required tensor-tree or `Batchable`
 protocol; random access is optional; indexed and streaming sources use
-different explicit seeded-shuffle strategies. Exact public names and
-signatures remain part of the integrated M1 design.
+different explicit seeded-shuffle strategies. Integrated names and signatures
+are in <doc:API2Design>, pending pair approval.
 
 ## Data model
 
@@ -58,7 +58,7 @@ source to participate in training.
 Batching custom data uses a throwing collate closure:
 
 ```swift
-let batches = source.batches(of: 32, dropLast: false) { samples in
+let batches = DataLoader(source: source, batchSize: 32, dropLast: false) { samples in
     Batch(
         input: EncoderInput(
             tokenIDs: stack(samples.map { $0.input.tokenIDs }),
@@ -90,11 +90,9 @@ pipeline boundary. M4 owns their precise runtime semantics and tests.
 The usual array-backed classifier remains concise:
 
 ```swift
-let trainingBatches = InMemoryDataset(
-    inputs: imageArrays,
-    targets: classIDs
-).batches(
-    of: 32,
+let trainingBatches = DataLoader(
+    source: InMemoryDataset(inputs: imageArrays, targets: classIDs),
+    batchSize: 32,
     shuffle: .full(seed: 42),
     dropLast: false
 )
@@ -107,17 +105,22 @@ use the same pipeline without declaring a length or loading all examples first:
 let stream: AsyncThrowingStream<Sample<EncoderInput, TokenTargets>, Error> =
     tokenizedExampleStream()
 
-let trainingBatches = stream
+let preparedSamples = stream
     .map(normalizeTokens)
     .filter(isUsable)
-    .shuffle(.buffered(windowSize: 512, seed: 42))
-    .batches(of: 32, dropLast: false, collate: collateTokenExamples)
-    .prefetched(bufferSize: 2)
+
+let trainingBatches = DataLoader(
+    source: preparedSamples,
+    batchSize: 32,
+    shuffle: .buffered(windowSize: 512, seed: 42),
+    dropLast: false,
+    collate: collateTokenExamples
+).prefetched(bufferSize: 2)
 ```
 
-These signatures are API sketches; the source and transform wrapper names are
-not final. They show that transformation order is explicit and that prefetch
-has a visible finite bound.
+These signatures are API sketches. The selected public names are in
+<doc:API2Design>. They show that transformation order is explicit and that
+prefetch has a visible finite bound.
 
 ## Shuffle and reproducibility
 
@@ -171,6 +174,5 @@ backpressure behavior, and cleanup guarantees.
   bounded streaming shuffle, prefetch/backpressure, errors, and cancellation.
 - Issue #8 aligns the batch sequence with the `TrainingStep<Model, Batch>`
   extension point.
-- The integrated issue #12 selects final names and Swift generic/throwing
-  signatures and adds migration guidance from the 1.x `Dataset` and
-  `DataLoader` APIs.
+- <doc:API2Design> records the selected Swift generic/throwing signatures and
+  migration guidance from the 1.x `Dataset` and `DataLoader` APIs.
