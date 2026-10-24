@@ -53,6 +53,8 @@ let history = try await engine.fit(
 - ``TrainingEngine``
 - ``TrainingConfiguration``
 - ``TrainingError``
+- ``GradientProcessingConfiguration``
+- ``GradientTransform``
 
 ### Losses
 

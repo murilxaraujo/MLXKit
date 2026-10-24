@@ -1,10 +1,11 @@
 # MLXKit 2.0 Public API Design
 
-**Status:** integrated M1 design and M2/M4 implementation record. The typed
-training, objective/metric, schedule, lifecycle, and sample-to-batch pipeline
-contracts described here are implemented. The training engine continues to
-consume asynchronous sequences of already-built typed ``Batch`` values. This
-page is not a final 2.0 compatibility promise.
+**Status:** integrated M1 design and M2/M4 implementation record, with M5
+gradient processing implemented. The typed training, objective/metric,
+schedule, lifecycle, gradient-processing, and sample-to-batch contracts
+described here are implemented. The training engine continues to consume
+asynchronous sequences of already-built typed ``Batch`` values. This page is
+not a final 2.0 compatibility promise.
 
 Detailed contract notes are in <doc:M1ModelContract>,
 <doc:M1ObjectiveMetricContract>, <doc:M1TrainingWorkflow>, and
@@ -128,17 +129,20 @@ public struct TrainingConfiguration<Output, Target> {
     public let objective: any Objective<Output, Target>
     public let metrics: [any Metric<Output, Target>]
     public let learningRateSchedule: (any LRSchedule)?
+    public let gradientProcessing: GradientProcessingConfiguration
 
     public init<ObjectiveType: Objective<Output, Target>>(
         optimizer: any Optimizer,
         objective: ObjectiveType,
         metrics: [any Metric<Output, Target>] = [],
-        learningRateSchedule: (any LRSchedule)? = nil
+        learningRateSchedule: (any LRSchedule)? = nil,
+        gradientProcessing: GradientProcessingConfiguration = .init()
     ) {
         self.optimizer = optimizer
         self.objective = objective
         self.metrics = metrics
         self.learningRateSchedule = learningRateSchedule
+        self.gradientProcessing = gradientProcessing
     }
 }
 ```
@@ -151,10 +155,11 @@ algorithms.
 `TrainingStep` is an optional lower-level loss-computation hook. It receives
 the concrete model and full typed batch and returns a scalar objective. MLXKit
 still owns autodiff, optimizer updates, callbacks, and lifecycle. Under the
-implemented M2 behavior, there is one optimizer update per batch; planned M5
-accumulation can group batches into one update as described in
-<doc:M5TrainingControlSemantics>. For a custom gradient/update algorithm, users
-use MLX and MLXOptimizers directly.
+implemented behavior, there is one optimizer update per batch. Optional M5
+gradient transforms and global-norm clipping run immediately before that
+update; planned M5 accumulation can group batches into one update as described
+in <doc:M5TrainingControlSemantics>. For a custom gradient/update algorithm,
+users use MLX and MLXOptimizers directly.
 
 ```swift
 public typealias TrainingStep<Model: TrainableModel, Target> =

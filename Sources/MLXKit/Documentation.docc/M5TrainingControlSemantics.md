@@ -1,9 +1,10 @@
 # M5 Training-Control Semantics
 
-**Status:** Contract for M5 implementation. The controls described here are
-not implemented yet. This page extends the implemented behavior in
-<doc:M2TrainingSemantics>; it does not change that behavior until the relevant
-M5 implementation issues are complete.
+**Status:** Gradient transforms and global-norm clipping are implemented.
+Accumulation and weighted cross entropy remain planned. The contracts in this
+page extend the implemented behavior in <doc:M2TrainingSemantics>; planned
+controls do not change that behavior until their implementation issues are
+complete.
 
 MLXKit continues to coordinate training. MLX owns tensor operations and
 autodiff, and MLXOptimizers owns optimizer algorithms and state. The engine
@@ -64,24 +65,24 @@ fails before the update. Invalid configuration and invalid gradients fail
 clearly; a configured control is never silently ignored. Earlier successful
 optimizer updates are not rolled back when a later operation fails.
 
-The corresponding API shape is illustrative, not a committed source-level
-signature:
+Gradient transforms and clipping are configured through
+``GradientProcessingConfiguration``:
 
 ```swift
 TrainingConfiguration(
     optimizer: optimizer,
     objective: objective,
-    controls: TrainingControls(
-        accumulation: .batches(4),
-        gradientTransforms: [transformA, transformB],
-        clipping: .globalNorm(maxNorm: 1.0)
+    gradientProcessing: GradientProcessingConfiguration(
+        transforms: [transformA, transformB],
+        globalNormClip: 1.0
     )
 )
 ```
 
-The controls are opt-in. With default controls (one batch per update, no
-transforms, no clipping), the engine retains the current one-batch/one-update
-behavior.
+Transforms can throw and are declared as ``GradientTransform``. The default
+configuration has no transforms and no clipping, so it retains the current
+one-batch/one-update behavior. Accumulation will compose at this update boundary
+when implemented.
 
 ## Sample-aware accumulation
 
