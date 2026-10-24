@@ -129,3 +129,5 @@ decided in their respective milestones.
   the final 2.0 API promise.
 - <doc:M1ObjectiveMetricContract> records the pair-approved objective/metric
   direction while implementation semantics remain assigned to M2.
+- <doc:M1TrainingWorkflow> records the pair-approved training-step,
+  optimizer/schedule, callback, and cancellation boundaries.

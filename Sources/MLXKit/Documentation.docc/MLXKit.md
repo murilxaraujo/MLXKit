@@ -37,6 +37,7 @@ let history = try await engine.fit(
 - <doc:ReferenceWorkloads>
 - <doc:M1ModelContract>
 - <doc:M1ObjectiveMetricContract>
+- <doc:M1TrainingWorkflow>
 - <doc:GettingStarted>
 - <doc:Architecture>
 
