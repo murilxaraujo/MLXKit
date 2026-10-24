@@ -35,19 +35,48 @@ private struct EmptyBatches<Element>: AsyncSequence {
 private struct FixedBatches<Element>: AsyncSequence {
     typealias Failure = Never
     let batches: [Element]
+    var readCounter: BatchReadCounter? = nil
 
     func makeAsyncIterator() -> Iterator {
-        Iterator(batches: batches)
+        Iterator(batches: batches, readCounter: readCounter)
     }
 
     struct Iterator: AsyncIteratorProtocol {
         let batches: [Element]
+        let readCounter: BatchReadCounter?
         var index = 0
 
         mutating func next() async -> Element? {
+            readCounter?.increment()
             guard index < batches.count else { return nil }
             defer { index += 1 }
             return batches[index]
+        }
+    }
+}
+
+private final class BatchReadCounter: @unchecked Sendable {
+    private(set) var count = 0
+    func increment() { count += 1 }
+}
+
+private enum BatchSequenceError: Error, Equatable {
+    case failed
+}
+
+private struct FailingBatches<Item>: AsyncSequence {
+    typealias Element = Item
+    typealias Failure = BatchSequenceError
+    typealias AsyncIterator = Iterator
+
+    func makeAsyncIterator() -> Iterator { Iterator() }
+
+    struct Iterator: AsyncIteratorProtocol {
+        typealias Element = Item
+        typealias Failure = BatchSequenceError
+
+        mutating func next() async throws -> Item? {
+            throw BatchSequenceError.failed
         }
     }
 }
@@ -310,6 +339,7 @@ struct TrainingErrorTests {
         let model = IntegerModel()
         model.train(false)
         let callback = LifecycleCallback(cancelAtBatchBegin: true)
+        let readCounter = BatchReadCounter()
         let configuration = TrainingConfiguration(
             optimizer: SGD(learningRate: 0.1),
             objective: ClosureObjective<Int, Int> { _, _ in MLXArray(0) }
@@ -319,7 +349,13 @@ struct TrainingErrorTests {
         let configurationBox = UncheckedSendableBox(configuration)
         let callbackBox = UncheckedSendableBox(callback)
         let dataBox = UncheckedSendableBox(
-            FixedBatches(batches: [Batch(input: 1, target: 1, sampleCount: 1)])
+            FixedBatches(
+                batches: [
+                    Batch(input: 1, target: 1, sampleCount: 1),
+                    Batch(input: 2, target: 2, sampleCount: 1),
+                ],
+                readCounter: readCounter
+            )
         )
         let trainingTask = Task {
             try await TrainingEngine().fit(
@@ -339,6 +375,31 @@ struct TrainingErrorTests {
         }
 
         #expect(callback.events == ["trainBegin", "batchBegin", "trainEnd"])
+        #expect(readCounter.count == 1)
         #expect(!model.training)
+    }
+
+    @Test func sequenceFailurePropagatesAndRunsTrainEnd() async throws {
+        let model = IntegerModel()
+        let callback = LifecycleCallback()
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.1),
+            objective: ClosureObjective<Int, Int> { _, _ in MLXArray(0) }
+        )
+
+        do {
+            _ = try await TrainingEngine().fit(
+                model,
+                configuration: configuration,
+                data: FailingBatches<Batch<Int, Int>>(),
+                epochs: 1,
+                callbacks: [callback]
+            )
+            Issue.record("Expected the batch sequence error to propagate")
+        } catch let error as BatchSequenceError {
+            #expect(error == .failed)
+        }
+
+        #expect(callback.events == ["trainBegin", "trainEnd"])
     }
 }

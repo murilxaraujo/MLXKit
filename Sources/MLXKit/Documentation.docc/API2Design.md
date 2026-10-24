@@ -1,9 +1,10 @@
 # MLXKit 2.0 Public API Design
 
-**Status:** integrated M1 design draft. The contract directions in issues #8–#11
-were approved in pair review. This page resolves their names and composition
-into one proposed API. It is a design record, not the current 1.x API reference
-or a final 2.0 compatibility promise until this review is approved.
+**Status:** integrated M1 design and M2 implementation record. The core typed
+training, objective/metric, schedule, and lifecycle contracts are implemented.
+The generalized sample-source ``DataLoader`` shown below is future M4 design;
+the current M2 engine consumes asynchronous sequences of already-built typed
+``Batch`` values. This page is not a final 2.0 compatibility promise.
 
 Detailed contract notes are in <doc:M1ModelContract>,
 <doc:M1ObjectiveMetricContract>, <doc:M1TrainingWorkflow>, and
@@ -107,8 +108,9 @@ the constraint at that boundary.
 Built-in classification/regression metrics specialize to `MLXArray`. Custom
 metrics can inspect structured outputs. The trainer owns objective loss
 aggregation and reserves the `loss` log key; `RunningLoss` is not a metric.
-Metric names are stable and unique within a configuration. M2 defines exact
-aggregation and collision validation.
+Metric names are stable and unique within a configuration. Names that are
+empty, duplicate, `loss`, or start with `val_` are rejected before training.
+Exact reporting behavior is in <doc:M2TrainingSemantics>.
 
 ## Configuration and training workflow
 

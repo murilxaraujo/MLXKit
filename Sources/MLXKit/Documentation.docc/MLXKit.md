@@ -4,24 +4,23 @@ A high-level Swift framework for machine learning on Apple silicon, built on MLX
 
 ## Overview
 
-MLXKit provides a Keras-style training API on top of
-[MLX Swift](https://github.com/ml-explore/mlx-swift). Define a model,
-compile it with an optimizer and loss, then call `fit()` — MLXKit handles
-gradient computation, metric tracking, callbacks, learning rate scheduling,
-and checkpointing.
+MLXKit provides a typed training workflow on top of
+[MLX Swift](https://github.com/ml-explore/mlx-swift). Define a model and a
+typed ``TrainingConfiguration``, then call `fit()` — MLXKit coordinates
+gradient computation, metric tracking, callbacks, learning-rate scheduling,
+and checkpointing while MLX and MLXOptimizers provide the numerical core.
 
 ```swift
 let model = MyModel()
 let engine = TrainingEngine()
-let config = engine.compile(
-    model: model,
+let config = TrainingConfiguration(
     optimizer: Adam(learningRate: 1e-3),
-    loss: CrossEntropyLoss(),
+    objective: CrossEntropyLoss(),
     metrics: [Accuracy()]
 )
 
 let history = try await engine.fit(
-    model, config: config, data: trainLoader,
+    model, configuration: config, data: trainLoader,
     epochs: 10, callbacks: [.progressReporter, .earlyStopping]
 )
 ```
@@ -36,6 +35,7 @@ let history = try await engine.fit(
 - <doc:PlatformSupport>
 - <doc:CompatibilityPolicy>
 - <doc:ReferenceWorkloads>
+- <doc:M2TrainingSemantics>
 - <doc:M1ModelContract>
 - <doc:M1ObjectiveMetricContract>
 - <doc:M1TrainingWorkflow>

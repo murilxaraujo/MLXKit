@@ -49,9 +49,9 @@ let logits = engine.predict(model, input: images)
 ```
 
 The actual data and configuration types must align with `Model.Input`,
-`Model.Output`, and the objective target type. Issue #11 owns the data
-abstraction names and batching contract. `predict` returns the model's complete
-`Output` type, as decided in issue #10.
+`Model.Output`, and the objective target type. M2 training consumes asynchronous
+sequences of `Batch<Model.Input, Target>`. M4 owns the generalized sample-source
+and collation pipeline. `predict` returns the model's complete `Output` type.
 
 These are proposed public signatures, not compilable examples against MLXKit
 1.x. The classifier and dataset declarations are abbreviated; the model
@@ -122,10 +122,10 @@ let evaluation = try await engine.evaluate(
 batch. MLXKit still computes gradients with MLX, applies the configured
 MLXOptimizers optimizer, updates metrics/logs, and dispatches lifecycle events.
 The step does not own the optimizer or mutate trainable parameters directly.
-M2 defines how a custom step's output participates in metrics, how often the
-model is evaluated, and how errors are reported. When supplied, the custom
-step replaces the configured objective for that operation; passing the same
-step to evaluation keeps its reported loss consistent with training.
+The custom step replaces the configured objective for that operation; passing
+the same step to evaluation keeps its reported loss consistent with training.
+Metrics continue to receive model outputs and targets, not the custom scalar
+step result.
 
 Users who need a different gradient algorithm, multiple optimizer updates per
 batch, or full control over parameter mutation can use MLX and MLXOptimizers
@@ -139,8 +139,8 @@ That protocol does not expose a common learning-rate property, although many
 concrete optimizers do. MLXKit must not use reflection or a switch over known
 optimizer classes to set rates.
 
-The design adds a narrow optional capability, provisionally
-`LearningRateControllable`, for an optimizer that can accept a rate update:
+The design adds a narrow optional capability, `LearningRateControllable`, for
+an optimizer that can accept a rate update:
 
 ```swift
 protocol LearningRateControllable: Optimizer {
@@ -148,7 +148,7 @@ protocol LearningRateControllable: Optimizer {
 }
 ```
 
-MLXKit can provide conformances/adapters for supported MLXOptimizers types;
+MLXKit provides conformances/adapters for supported MLXOptimizers types;
 custom optimizers can adopt the capability when they support it. The existing
 MLXKit schedule abstraction (or an equivalent step-to-rate closure) computes
 the value. MLXKit does not reimplement optimizer behavior. Configuring a
@@ -176,8 +176,8 @@ not read or mutate the schedule.
   wins if train-end also throws.
 - `fit`, `evaluate`, and `predict` restore the model's prior train/eval mode.
 
-The lifecycle remains observable through callbacks and per-epoch history. The
-M2 implementation and tests define exact hook order and failure cleanup.
+The lifecycle remains observable through callbacks and per-epoch history. See
+<doc:M2TrainingSemantics> for exact event order and failure cleanup.
 
 ## Alternatives and rationale
 
@@ -196,7 +196,6 @@ M2 implementation and tests define exact hook order and failure cleanup.
 
 ## Deferred to later milestones
 
-- Issue #11 defines the batch type consumed by `TrainingStep`.
 - M5 owns gradient controls and training controls beyond one MLX gradient and
   one configured optimizer update per batch.
 

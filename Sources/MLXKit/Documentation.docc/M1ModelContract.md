@@ -178,19 +178,17 @@ specialized path for the common single-array case.
 
 ## Deferred decisions and validation
 
-- M2 must benchmark the structured-input autodiff path and decide whether the
-  common `MLXArray` case needs a specialized implementation. Do not prescribe a
-  universal performance threshold before measuring a baseline.
-- Issue #11 and M4 must define batching for user-defined structured `Input`
-  values without coupling data types to the model protocol.
-- The integrated M1 design must review the migration from `forward` to
-  `callAsFunction` and make the breaking change explicit.
+- The M2 acceptance fixture covers a deterministic `MLXArray` regression path.
+  A structured-input performance baseline remains future work; no universal
+  performance threshold is promised.
+- M4 owns generalized sample-source batching and collation for user-defined
+  structured `Input` values.
+- The integrated API uses `callAsFunction`; see <doc:API2Design> for the
+  source migration direction from `forward`.
 
-The callable method and boundary-only concurrency constraints above are the
-current pair-reviewed direction, as is allowing user-defined I/O types without
-a required tree protocol and sharing one `Output` type between training and
-inference. The integrated M1 API review and migration analysis remain the
-release-level approval gates.
+The callable method and boundary-only concurrency constraints above are
+implemented, as is allowing user-defined I/O types without a required tree
+protocol and sharing one `Output` type between training and inference.
 
 The final design must be consistent with <doc:MLXKitAndMLX> and the wider M1
 design record. Decisions about batching and training-loop behavior remain with

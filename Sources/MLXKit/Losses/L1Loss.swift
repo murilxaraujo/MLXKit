@@ -3,7 +3,7 @@ import MLXNN
 
 /// Computes the L1 (mean absolute error) loss between predictions and targets.
 ///
-/// Wraps ``MLXNN/l1Loss(predictions:targets:reduction:)``.
+/// Wraps the MLXNN L1 loss operation.
 ///
 /// The per-sample loss is `|predictions - targets|`.
 ///

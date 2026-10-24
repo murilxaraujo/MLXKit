@@ -3,7 +3,7 @@ import MLXNN
 
 /// Computes the mean squared error loss between predictions and targets.
 ///
-/// Wraps ``MLXNN/mseLoss(predictions:targets:reduction:)``.
+/// Wraps the MLXNN mean squared error operation.
 ///
 /// The per-sample loss is `(predictions - targets)²`.
 ///
