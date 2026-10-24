@@ -17,8 +17,3 @@ extension Metric where Self == MeanAbsoluteError {
     /// Mean absolute error metric.
     public static var meanAbsoluteError: MeanAbsoluteError { MeanAbsoluteError() }
 }
-
-extension Metric where Self == RunningLoss {
-    /// Running loss metric.
-    public static var runningLoss: RunningLoss { RunningLoss() }
-}

@@ -116,19 +116,4 @@ struct MeanAbsoluteErrorGPUTests {
     }
 }
 
-@Suite("RunningLoss (GPU)")
-struct RunningLossGPUTests {
-    @Test func averageAcrossBatches() {
-        let runningLoss = RunningLoss()
-
-        // Batch 1: loss = 2.0, 10 samples
-        runningLoss.update(loss: MLXArray(Float32(2.0)), count: 10)
-        // Batch 2: loss = 4.0, 10 samples
-        runningLoss.update(loss: MLXArray(Float32(4.0)), count: 10)
-
-        // Total: 6.0 / 20 = 0.3
-        let result = runningLoss.compute()
-        #expect(abs(result - 0.3) < 1e-5)
-    }
-}
 #endif

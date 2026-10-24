@@ -93,6 +93,7 @@ public final class TrainingEngine: @unchecked Sendable {
         guard epochs > 0 else {
             throw TrainingError.invalidEpochCount(epochs)
         }
+        try validateMetricNames(configuration.metrics)
 
         let history = History()
         let callbackList = CallbackList([history] + callbacks)
@@ -215,6 +216,7 @@ public final class TrainingEngine: @unchecked Sendable {
     ) async throws -> [String: Float]
     where Data.Element == Batch<Model.Input, Target>, Data.Failure: Error {
         let wasTraining = model.training
+        try validateMetricNames(configuration.metrics)
         model.train(false)
         defer { model.train(wasTraining) }
 
@@ -258,6 +260,22 @@ public final class TrainingEngine: @unchecked Sendable {
             results[metric.name] = metric.compute()
         }
         return results
+    }
+
+    private func validateMetricNames<Output, Target>(
+        _ metrics: [any Metric<Output, Target>]
+    ) throws {
+        var names = Set<String>()
+        for metric in metrics {
+            let name = metric.name
+            guard !name.isEmpty,
+                  name != "loss",
+                  !name.hasPrefix("val_"),
+                  names.insert(name).inserted
+            else {
+                throw TrainingError.metricNameCollision(name)
+            }
+        }
     }
 
     /// Runs the model in inference mode for one typed input and restores its

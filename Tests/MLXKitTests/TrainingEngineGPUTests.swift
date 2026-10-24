@@ -37,6 +37,40 @@ private final class ClassifierModel: Module, TrainableModel {
     }
 }
 
+private final class ScalarLinearModel: Module, TrainableModel {
+    typealias Input = MLXArray
+    typealias Output = MLXArray
+
+    let weight = MLXArray(Float32(1))
+
+    func callAsFunction(_ input: MLXArray) -> MLXArray {
+        input * weight
+    }
+}
+
+private final class MeanOutputMetric: Metric {
+    typealias Output = MLXArray
+    typealias Target = MLXArray
+
+    let name = "mean_output"
+    private var sum: Float = 0
+    private var count = 0
+
+    func update(output: MLXArray, target: MLXArray) {
+        sum += output.sum().item(Float.self)
+        count += output.size
+    }
+
+    func compute() -> Float {
+        count == 0 ? 0 : sum / Float(count)
+    }
+
+    func reset() {
+        sum = 0
+        count = 0
+    }
+}
+
 /// Creates a simple regression dataset: y = x0 + x1
 private func makeRegressionDataset(count: Int) -> InMemoryDataset {
     let features = MLXRandom.uniform(low: -1.0, high: 1.0, [count, 2])
@@ -46,6 +80,114 @@ private func makeRegressionDataset(count: Int) -> InMemoryDataset {
 
 @Suite("TrainingEngine fit() (GPU)", .serialized)
 struct TrainingEngineFitGPUTests {
+    @Test func epochLossWeightsScalarBatchObjectivesBySampleCount() async throws {
+        let model = ScalarLinearModel()
+        let inputs = MLXArray([1.0, 1.0, 10.0] as [Float32]).reshaped([3, 1])
+        let targets = MLXArray.zeros([3, 1])
+        let loader = DataLoader(
+            dataset: InMemoryDataset(features: inputs, labels: targets),
+            batchSize: 2
+        )
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.01),
+            objective: MSELoss()
+        )
+
+        let history = try await TrainingEngine().fit(
+            model,
+            configuration: configuration,
+            data: loader,
+            epochs: 1,
+            trainingStep: { model, batch in
+                batch.input.mean() + model(batch.input).sum() * 0
+            }
+        )
+
+        // Batch scalar objectives are 1 and 10, with sample counts 2 and 1.
+        #expect(abs(history["loss"][0]! - 4) < 1e-5)
+    }
+
+    @Test func metricsObservePreUpdatePrediction() async throws {
+        let model = ScalarLinearModel()
+        let inputs = MLXArray([1.0, 2.0] as [Float32]).reshaped([2, 1])
+        let targets = MLXArray.zeros([2, 1])
+        let loader = DataLoader(
+            dataset: InMemoryDataset(features: inputs, labels: targets),
+            batchSize: 2
+        )
+        let before = TrainingEngine().predict(model, input: inputs).mean().item(Float.self)
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.1),
+            objective: MSELoss(),
+            metrics: [MeanOutputMetric()]
+        )
+
+        let history = try await TrainingEngine().fit(
+            model,
+            configuration: configuration,
+            data: loader,
+            epochs: 1
+        )
+        let after = TrainingEngine().predict(model, input: inputs).mean().item(Float.self)
+
+        #expect(abs(history["mean_output"][0]! - before) < 1e-5)
+        #expect(abs(after - before) > 1e-3)
+    }
+
+    @Test func nonScalarObjectiveIsRejectedBeforeScalarExtraction() async throws {
+        let model = ScalarLinearModel()
+        let inputs = MLXArray([1.0, 2.0] as [Float32]).reshaped([2, 1])
+        let targets = MLXArray.zeros([2, 1])
+        let loader = DataLoader(
+            dataset: InMemoryDataset(features: inputs, labels: targets),
+            batchSize: 2
+        )
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.1),
+            objective: MSELoss(reduction: .none)
+        )
+
+        do {
+            _ = try await TrainingEngine().fit(
+                model,
+                configuration: configuration,
+                data: loader,
+                epochs: 1
+            )
+            Issue.record("Expected the unreduced objective to be rejected")
+        } catch let error as TrainingError {
+            #expect(error == .nonScalarObjective(shape: [2, 1]))
+        }
+    }
+
+    @Test func shapeOneObjectiveIsNotTreatedAsScalar() async throws {
+        let model = ScalarLinearModel()
+        let inputs = MLXArray([1.0, 2.0] as [Float32]).reshaped([2, 1])
+        let targets = MLXArray.zeros([2, 1])
+        let loader = DataLoader(
+            dataset: InMemoryDataset(features: inputs, labels: targets),
+            batchSize: 2
+        )
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.1),
+            objective: ClosureObjective<MLXArray, MLXArray> { output, _ in
+                output.mean().expandedDimensions(axis: 0)
+            }
+        )
+
+        do {
+            _ = try await TrainingEngine().fit(
+                model,
+                configuration: configuration,
+                data: loader,
+                epochs: 1
+            )
+            Issue.record("Expected shape [1] to be rejected as non-scalar")
+        } catch let error as TrainingError {
+            #expect(error == .nonScalarObjective(shape: [1]))
+        }
+    }
+
     @Test func oneBatchUpdateMatchesDirectMLX() async throws {
         let trainedModel = TwoLayerModel()
         let directModel = TwoLayerModel()
@@ -84,11 +226,11 @@ struct TrainingEngineFitGPUTests {
         directOptimizer.update(model: directModel, gradients: gradients)
         eval(directModel, directOptimizer)
 
-        let actual = trainedModel.trainableParameters().flattened()
-        let expected = directModel.trainableParameters().flattened()
-        #expect(actual.keys.sorted() == expected.keys.sorted())
-        for key in actual.keys {
-            let difference = abs(actual[key]! - expected[key]!).max().item(Float.self)
+        let actual = trainedModel.trainableParameters().flattened().sorted { $0.0 < $1.0 }
+        let expected = directModel.trainableParameters().flattened().sorted { $0.0 < $1.0 }
+        #expect(actual.map(\.0) == expected.map(\.0))
+        for (actualParameter, expectedParameter) in zip(actual, expected) {
+            let difference = abs(actualParameter.1 - expectedParameter.1).max().item(Float.self)
             #expect(difference < 1e-5)
         }
     }
