@@ -51,6 +51,7 @@ func makeSyntheticData(count: Int) -> InMemoryDataset {
 @main
 struct MNISTExample {
     static func main() async throws {
+        seed(42)
         print("MLXKit MNIST-style Example")
         print("==========================\n")
 
@@ -68,7 +69,15 @@ struct MNISTExample {
             optimizer: Adam(learningRate: 1e-3),
             objective: CrossEntropyLoss(),
             metrics: [Accuracy()],
-            learningRateSchedule: CosineDecay(initialLR: 1e-3, totalSteps: 500)
+            learningRateSchedule: CosineDecay(initialLR: 1e-3, totalSteps: 40),
+            gradientProcessing: GradientProcessingConfiguration(
+                transforms: [{ gradients in
+                    // Demonstrate ordered tree-wide processing before clipping.
+                    gradients.mapValues { $0 * 0.9 }
+                }],
+                globalNormClip: 1.0
+            ),
+            gradientAccumulationSteps: 2
         )
 
         // 4. Create data loaders
@@ -118,7 +127,7 @@ struct MNISTExample {
             .appendingPathComponent("mlxkit_example")
         let checkpointURL = checkpointDir.appendingPathComponent("model.safetensors")
 
-        try Checkpointing.save(model: model, epoch: 5, step: 500, to: checkpointURL)
+        try Checkpointing.save(model: model, epoch: 5, step: 40, to: checkpointURL)
         print("Checkpoint saved to: \(checkpointURL.path(percentEncoded: false))")
 
         let newModel = MNISTModel()

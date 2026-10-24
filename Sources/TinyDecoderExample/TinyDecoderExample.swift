@@ -58,6 +58,16 @@ private enum OptionsError: Error, LocalizedError {
     }
 }
 
+private func customTrainingStep(
+    _ model: TinyDecoder,
+    _ batch: Batch<MLXArray, MLXArray>
+) -> MLXArray {
+    let logits = model(batch.input)
+    let nextTokenLoss = NextTokenObjective()(output: logits, target: batch.target)
+    let logitPenalty = (logits * logits).mean() * 1e-5
+    return nextTokenLoss + logitPenalty
+}
+
 @main
 struct TinyDecoderExample {
     static func main() async throws {
@@ -75,7 +85,6 @@ struct TinyDecoderExample {
             optimizer: Adam(learningRate: 0.003),
             objective: NextTokenObjective()
         )
-
         // A fixed local pattern: the target token is always the next vocabulary
         // item, wrapping at the vocabulary boundary. No data is downloaded.
         let rows = makeTokenRows(
@@ -101,12 +110,14 @@ struct TinyDecoderExample {
             model,
             configuration: configuration,
             data: trainingBatches,
-            epochs: options.epochs
+            epochs: options.epochs,
+            trainingStep: customTrainingStep
         )
         let evaluation = try await engine.evaluate(
             model,
             configuration: configuration,
-            data: evaluationBatches
+            data: evaluationBatches,
+            trainingStep: customTrainingStep
         )
 
         if let finalEpoch = history.epochs.last {

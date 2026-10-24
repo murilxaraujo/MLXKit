@@ -247,3 +247,36 @@ gradients, mixed-precision loss scaling, optimizer algorithms, a generic tensor
 tree API, or a new callback lifecycle. The M5 implementation issues add these
 controls without changing the M4 source-to-batch boundary or the M2 ownership
 split.
+
+Invalid global-norm limits and accumulation-window sizes fail configuration
+validation before data iteration with ``TrainingError/invalidGlobalNormClip(_:)``
+and ``TrainingError/invalidGradientAccumulationSteps(_:)``. Invalid weighted
+cross-entropy shapes or weights produce a non-finite scalar; `fit` and
+`evaluate` report ``TrainingError/nonFiniteObjective``. Gradient transform
+errors, tree-key changes, shape changes, and non-finite transformed values fail
+before the affected update. Earlier successful updates are not rolled back.
+
+`MNISTExample` demonstrates the standard objective path with a gradient
+transform, global-norm clipping, and two-batch accumulation. `TinyDecoderExample`
+demonstrates a ``TrainingStep`` that adds a scalar penalty to the configured
+objective. In both cases, MLXKit retains autodiff and update ownership, and
+MLXOptimizers retains optimizer-algorithm ownership. Use direct MLX and
+MLXOptimizers APIs when an algorithm needs a custom optimizer update.
+
+Run the deterministic local examples and validation commands with:
+
+```sh
+swift run MNISTExample
+swift run TinyDecoderExample
+swift run DataPipelineExample
+make test
+make test-gpu
+make docs
+```
+
+The examples use generated local data and do not download datasets.
+
+Validation record for this integration (2026-10-25): `swift test` passed with
+92 tests, `make test-gpu` passed with 178 tests, and `make docs` completed. All
+three listed example commands ran successfully on the local Apple Silicon/Metal
+environment.

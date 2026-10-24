@@ -27,6 +27,12 @@ cross-entropy over next-token logits. The example uses the typed model contract
 with `MLXArray` token inputs and logits, builds typed `Batch<MLXArray, MLXArray>`
 values, and passes a re-iterable asynchronous sequence to `TrainingEngine`.
 
+The example also supplies a `TrainingStep` that adds a small scalar logit
+penalty to the next-token loss. This shows that `TrainingStep` can customize
+loss computation for both `fit` and `evaluate`; MLXKit still performs
+autodiff and optimizer updates, and MLXOptimizers still owns the optimizer
+algorithm. Use direct MLX and MLXOptimizers APIs for a custom update algorithm.
+
 The decoder implementation lives in the example's internal `TinyDecoderCore`
 target. Its `TinyDecoder` conforms to `TrainableModel`, and
 `NextTokenObjective` conforms to `Objective<MLXArray, MLXArray>`. The batch

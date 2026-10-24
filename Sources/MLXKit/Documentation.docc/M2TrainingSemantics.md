@@ -93,12 +93,12 @@ the prior mode before returning or throwing.
 
 M2 consumes typed asynchronous sequences of already-built batches. It does not
 implement M4 sample sources, transforms, collation, streaming shuffle,
-prefetch, or backpressure. M5 weighted objectives and M6 distributed execution
-are deferred. Gradient transforms, global-norm clipping, and sample-aware
-accumulation are implemented by M5. MLXKit validates the scalar
-objective contract and its own configuration; MLX continues to define runtime
-array shape, dtype, and device behavior.
+prefetch, or backpressure. M5 gradient transforms, global-norm clipping,
+sample-aware accumulation, and weighted cross entropy are implemented. M6
+distributed execution remains deferred. MLXKit validates the scalar objective
+contract and its own configuration; MLX continues to define runtime array
+shape, dtype, and device behavior.
 
 The M5 control ordering, accumulation, weighting, and failure contracts are
 recorded in <doc:M5TrainingControlSemantics>. Implemented M5 controls extend
-M2's update path; weighted objectives remain planned.
+M2's update path without changing the typed batch boundary.

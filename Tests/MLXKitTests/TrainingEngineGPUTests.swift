@@ -409,6 +409,73 @@ struct TrainingEngineFitGPUTests {
         }
     }
 
+    @Test func accumulatedTransformedAndClippedGradientMatchesDirectMLX() async throws {
+        let batches = BatchSequence(batches: [
+            regressionBatch([1]),
+            regressionBatch([2, 3]),
+        ])
+        let recordedOptimizer = RecordingGradientOptimizer()
+        let configuration = TrainingConfiguration(
+            optimizer: recordedOptimizer,
+            objective: MSELoss(),
+            gradientProcessing: GradientProcessingConfiguration(
+                transforms: [{ gradients in gradients.mapValues { $0 * 2 } }],
+                globalNormClip: 0.5
+            ),
+            gradientAccumulationSteps: 2
+        )
+
+        _ = try await TrainingEngine().fit(
+            ScalarLinearModel(),
+            configuration: configuration,
+            data: batches,
+            epochs: 1
+        )
+
+        let directModel = ScalarLinearModel()
+        let combinedInputs = MLXArray([1.0, 2.0, 3.0] as [Float32]).reshaped([3, 1])
+        let combinedTargets = MLXArray.zeros([3, 1])
+        let directLossAndGrad = valueAndGrad(model: directModel) {
+            (model: ScalarLinearModel, features: MLXArray, targets: MLXArray) -> MLXArray in
+            MSELoss()(predictions: model(features), targets: targets)
+        }
+        let (_, rawGradients) = directLossAndGrad(directModel, combinedInputs, combinedTargets)
+        let transformedGradients = rawGradients.mapValues { $0 * 2 }
+        let globalNorm = transformedGradients.flattened().reduce(Float.zero) {
+            $0 + ($1.1 * $1.1).sum().item(Float.self)
+        }.squareRoot()
+        let clipScale = min(Float(1), Float(0.5) / globalNorm)
+        let expectedGradients = transformedGradients.mapValues { $0 * clipScale }
+
+        #expect(recordedOptimizer.receivedGradients.count == 1)
+        let actualLeaves = Dictionary(uniqueKeysWithValues: recordedOptimizer.receivedGradients[0].flattened())
+        let expectedLeaves = Dictionary(uniqueKeysWithValues: expectedGradients.flattened())
+        #expect(Set(actualLeaves.keys) == Set(expectedLeaves.keys))
+        for key in actualLeaves.keys {
+            #expect(actualLeaves[key]!.allClose(expectedLeaves[key]!, rtol: 1e-5, atol: 1e-5).all().item(Bool.self))
+        }
+
+        let actualModel = ScalarLinearModel()
+        _ = try await TrainingEngine().fit(
+            actualModel,
+            configuration: TrainingConfiguration(
+                optimizer: SGD(learningRate: 0.01),
+                objective: MSELoss(),
+                gradientProcessing: GradientProcessingConfiguration(
+                    transforms: [{ gradients in gradients.mapValues { $0 * 2 } }],
+                    globalNormClip: 0.5
+                ),
+                gradientAccumulationSteps: 2
+            ),
+            data: batches,
+            epochs: 1
+        )
+        SGD(learningRate: 0.01).update(model: directModel, gradients: expectedGradients)
+        eval(directModel)
+
+        #expect(abs(actualModel.weight.item(Float.self) - directModel.weight.item(Float.self)) < 1e-5)
+    }
+
     @Test func fullAndPartialWindowsEachUpdateOnceAndUseGradientProcessing() async throws {
         for batchCount in [4, 5] {
             let optimizer = RecordingGradientOptimizer()
