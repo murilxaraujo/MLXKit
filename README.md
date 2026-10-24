@@ -6,8 +6,8 @@ MLXKit provides a Keras-style training API: define a model, compile it with an o
 
 ## Requirements
 
-- macOS 14+ / iOS 17+
-- Swift 6.2+
+- macOS 27+
+- Swift 6.4+
 - Apple Silicon (M1 or later)
 
 ## Installation

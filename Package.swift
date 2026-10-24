@@ -1,4 +1,4 @@
-// swift-tools-version: 6.2
+// swift-tools-version: 6.4
 
 import PackageDescription
 
@@ -11,8 +11,7 @@ import Foundation
 let package = Package(
     name: "MLXKit",
     platforms: [
-        .macOS(.v14),
-        .iOS(.v17),
+        .macOS(.v27)
     ],
     products: [
         .library(
@@ -25,8 +24,8 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.31.3"),
-        .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.4.3"),
+        .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.32.3"),
+        .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.5.0"),
     ],
     targets: [
         .target(
