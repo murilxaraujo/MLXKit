@@ -40,7 +40,7 @@ final class Classifier: Module, TrainableModel {
     let linear1 = Linear(inputDimensions: 784, outputDimensions: 128)
     let linear2 = Linear(inputDimensions: 128, outputDimensions: 10)
 
-    func forward(_ input: MLXArray) -> MLXArray {
+    func callAsFunction(_ input: MLXArray) -> MLXArray {
         var x = linear1(input)
         x = maximum(x, 0) // ReLU
         return linear2(x)
@@ -48,7 +48,7 @@ final class Classifier: Module, TrainableModel {
 }
 ```
 
-### Compiling and Training
+### Configure and Train
 
 Use ``TrainingEngine`` to compile and train:
 
@@ -56,11 +56,9 @@ Use ``TrainingEngine`` to compile and train:
 let model = Classifier()
 let engine = TrainingEngine()
 
-// Compile: bundle optimizer, loss, and metrics
-let config = engine.compile(
-    model: model,
+let config = TrainingConfiguration(
     optimizer: Adam(learningRate: 1e-3),
-    loss: CrossEntropyLoss(),
+    objective: CrossEntropyLoss(),
     metrics: [Accuracy()]
 )
 
@@ -70,7 +68,7 @@ let loader = DataLoader(dataset: dataset, batchSize: 32, shuffle: true)
 
 // Train
 let history = try await engine.fit(
-    model, config: config, data: loader,
+    model, configuration: config, data: loader,
     epochs: 10,
     callbacks: [ProgressReporter()]
 )
@@ -80,7 +78,7 @@ let history = try await engine.fit(
 
 ```swift
 // Evaluate on test data
-let metrics = try await engine.evaluate(model, config: config, data: testLoader)
+let metrics = try await engine.evaluate(model, configuration: config, data: testLoader)
 print("Test accuracy: \(metrics["accuracy"]!)")
 
 // Predict on new inputs

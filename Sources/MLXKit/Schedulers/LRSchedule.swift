@@ -3,7 +3,9 @@ import Foundation
 /// A learning rate schedule that maps a training step to a learning rate.
 ///
 /// Conform to this protocol to create custom schedules. The training engine
-/// calls ``learningRate(atStep:)`` before each optimizer update.
+/// calls ``learningRate(atStep:)`` before each optimizer update. The configured
+/// optimizer must conform to ``LearningRateControllable``; unsupported
+/// optimizer/schedule combinations fail before training begins.
 ///
 /// ```swift
 /// let schedule = CosineDecay(initialLR: 1e-3, totalSteps: 10000)

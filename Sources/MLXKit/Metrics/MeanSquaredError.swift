@@ -11,6 +11,9 @@ import MLX
 /// print(mse.compute()) // e.g. 0.25
 /// ```
 public final class MeanSquaredError: Metric, @unchecked Sendable {
+    public typealias Output = MLXArray
+    public typealias Target = MLXArray
+
     public let name = "mse"
 
     private var sumSquaredError: Float = 0
@@ -23,6 +26,10 @@ public final class MeanSquaredError: Metric, @unchecked Sendable {
         let se = (diff * diff).sum()
         sumSquaredError += se.item(Float.self)
         total += targets.size
+    }
+
+    public func update(output: MLXArray, target: MLXArray) {
+        update(predictions: output, targets: target)
     }
 
     public func compute() -> Float {

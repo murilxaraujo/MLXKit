@@ -1,4 +1,5 @@
 import Testing
+import MLXOptimizers
 @testable import MLXKit
 
 @Suite("CosineDecay")
@@ -127,5 +128,57 @@ struct SchedulerStaticLookupTests {
         let schedule: ExponentialDecay = .exponentialDecay(initialLR: 0.01, gamma: 0.999)
         #expect(schedule.initialLR == 0.01)
         #expect(schedule.gamma == 0.999)
+    }
+}
+
+@Suite("Learning-rate optimizer capability")
+struct LearningRateControllableTests {
+    @Test func supportedMLXOptimizersAcceptScheduledRates() throws {
+        let sgd = SGD(learningRate: 0.1)
+        let rmsprop = RMSprop(learningRate: 0.1)
+        let adaGrad = AdaGrad(learningRate: 0.1)
+        let adaDelta = AdaDelta(learningRate: 0.1)
+        let adam = Adam(learningRate: 0.1)
+        let adamW = AdamW(learningRate: 0.1)
+        let adamax = Adamax(learningRate: 0.1)
+        let lion = Lion(learningRate: 0.1)
+        let muon = Muon(learningRate: 0.1)
+
+        let optimizers: [any LearningRateControllable] = [
+            sgd, rmsprop, adaGrad, adaDelta, adam, adamW, adamax, lion, muon,
+        ]
+        for optimizer in optimizers {
+            try optimizer.setLearningRate(0.025)
+        }
+
+        #expect(sgd.learningRate == 0.025)
+        #expect(rmsprop.learningRate == 0.025)
+        #expect(adaGrad.learningRate == 0.025)
+        #expect(adaDelta.learningRate == 0.025)
+        #expect(adam.learningRate == 0.025)
+        #expect(adamW.learningRate == 0.025)
+        #expect(adamax.learningRate == 0.025)
+        #expect(lion.learningRate == 0.025)
+        #expect(muon.learningRate == 0.025)
+    }
+
+    @Test func adafactorDisablesRelativeRateWhenScheduleTakesControl() throws {
+        let optimizer = Adafactor()
+        #expect(optimizer.relativeStep)
+
+        try optimizer.setLearningRate(0.012)
+
+        #expect(!optimizer.relativeStep)
+        #expect(optimizer.learningRate == 0.012)
+    }
+
+    @Test func invalidRatesAreRejected() throws {
+        let optimizer = SGD(learningRate: 0.1)
+        do {
+            try optimizer.setLearningRate(.infinity)
+            Issue.record("Expected a non-finite learning rate to be rejected")
+        } catch let error as TrainingError {
+            #expect(error == .invalidLearningRate(.infinity))
+        }
     }
 }

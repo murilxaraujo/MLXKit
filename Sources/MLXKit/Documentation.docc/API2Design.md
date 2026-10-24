@@ -1,9 +1,10 @@
 # MLXKit 2.0 Public API Design
 
-**Status:** integrated M1 design draft. The contract directions in issues #8–#11
-were approved in pair review. This page resolves their names and composition
-into one proposed API. It is a design record, not the current 1.x API reference
-or a final 2.0 compatibility promise until this review is approved.
+**Status:** integrated M1 design and M2 implementation record. The core typed
+training, objective/metric, schedule, and lifecycle contracts are implemented.
+The generalized sample-source ``DataLoader`` shown below is future M4 design;
+the current M2 engine consumes asynchronous sequences of already-built typed
+``Batch`` values. This page is not a final 2.0 compatibility promise.
 
 Detailed contract notes are in <doc:M1ModelContract>,
 <doc:M1ObjectiveMetricContract>, <doc:M1TrainingWorkflow>, and
@@ -107,8 +108,9 @@ the constraint at that boundary.
 Built-in classification/regression metrics specialize to `MLXArray`. Custom
 metrics can inspect structured outputs. The trainer owns objective loss
 aggregation and reserves the `loss` log key; `RunningLoss` is not a metric.
-Metric names are stable and unique within a configuration. M2 defines exact
-aggregation and collision validation.
+Metric names are stable and unique within a configuration. Names that are
+empty, duplicate, `loss`, or start with `val_` are rejected before training.
+Exact reporting behavior is in <doc:M2TrainingSemantics>.
 
 ## Configuration and training workflow
 
@@ -159,8 +161,15 @@ call. Pass the same step to evaluation when its loss should match training.
 
 `fit` and `evaluate` are `async throws`. Callback hooks are synchronous and
 throwing; callback errors propagate. Swift task cancellation surfaces as
-`CancellationError`. M2 defines exact event order, cancellation checkpoints,
-cleanup, error types, early-stop timing, and metric/output reuse.
+`CancellationError`, checked before each batch update and after batch-sequence
+completion. Callback hooks run serially in the documented lifecycle order.
+After train-begin dispatch starts, train-end dispatch runs exactly once on
+success, early stop, cancellation, or failure; an original run error takes
+precedence if train-end also throws. Early-stop requests take effect after the
+current batch/epoch-end hook. Fit restores the model's prior train/eval mode;
+evaluate and predict do the same. Non-finite objectives or gradients throw
+typed `TrainingError`s before an optimizer update. These semantics are covered
+by M2 tests.
 
 ```swift
 public func fit<Model: TrainableModel, Target>(
@@ -199,6 +208,13 @@ An optional `LearningRateControllable: Optimizer` capability exposes
 optimizers may conform. A schedule paired with an optimizer that lacks this
 capability fails clearly before training. MLXKit supplies schedules, not a
 parallel optimizer implementation.
+
+The M2 adapters cover SGD, RMSprop, AdaGrad, AdaDelta, Adam/AdamW, Adamax,
+Lion, Adafactor, and Muon. `MultiOptimizer` is not adaptable as a single rate
+because its children can use different optimizers; users can schedule its
+children directly or provide a custom optimizer that implements the capability.
+For Adafactor, configuring a schedule switches off its default relative-rate
+mode so the supplied rate is effective.
 
 ```swift
 public protocol LearningRateControllable: Optimizer {
@@ -436,6 +452,7 @@ across versions; M6 owns the artifact policy.
 | `predict(input: MLXArray) -> MLXArray` | `predict(input: Model.Input) -> Model.Output` | Update call sites and handle the full structured output type where applicable. |
 | Concrete optimizer casts for schedules | Optional `LearningRateControllable` capability | Custom optimizer integrations conform explicitly; unsupported schedule/optimizer combinations fail clearly. |
 | Nonthrowing callback hooks | Synchronous throwing hooks | Add `throws` to callback conformances and handle propagated callback errors. Async training cancellation surfaces as `CancellationError`. |
+| `TerminateOnNaN` callback | Typed `TrainingError.nonFiniteObjective` / `.nonFiniteGradient` | Remove the callback; non-finite training values fail before an optimizer update instead of requesting a stop after a bad update. |
 | `Checkpointing` weight/full-checkpoint calls | No M1 mapping selected | M6 will distinguish weights, inference artifacts, and resumable checkpoints. Do not assume cross-version artifact compatibility. |
 
 ## Alternatives rejected

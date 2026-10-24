@@ -12,6 +12,9 @@ import MLX
 /// print(accuracy.compute()) // e.g. 0.85
 /// ```
 public final class Accuracy: Metric, @unchecked Sendable {
+    public typealias Output = MLXArray
+    public typealias Target = MLXArray
+
     public let name = "accuracy"
 
     private var correct: Int = 0
@@ -29,6 +32,10 @@ public final class Accuracy: Metric, @unchecked Sendable {
         let matches = predicted .== targets
         correct += matches.sum().item(Int.self)
         total += targets.size
+    }
+
+    public func update(output: MLXArray, target: MLXArray) {
+        update(predictions: output, targets: target)
     }
 
     public func compute() -> Float {

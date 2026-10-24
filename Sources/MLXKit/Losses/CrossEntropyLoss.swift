@@ -3,8 +3,7 @@ import MLXNN
 
 /// Computes the cross-entropy loss between logits and integer class targets.
 ///
-/// Wraps ``MLXNN/crossEntropy(logits:targets:weights:axis:labelSmoothing:reduction:)``
-/// with the ``LossFunction`` protocol.
+/// Wraps the MLXNN cross-entropy operation with the ``LossFunction`` protocol.
 ///
 /// ```swift
 /// let loss = CrossEntropyLoss()

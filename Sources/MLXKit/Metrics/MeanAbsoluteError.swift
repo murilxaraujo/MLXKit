@@ -11,6 +11,9 @@ import MLX
 /// print(mae.compute()) // e.g. 0.5
 /// ```
 public final class MeanAbsoluteError: Metric, @unchecked Sendable {
+    public typealias Output = MLXArray
+    public typealias Target = MLXArray
+
     public let name = "mae"
 
     private var sumAbsoluteError: Float = 0
@@ -22,6 +25,10 @@ public final class MeanAbsoluteError: Metric, @unchecked Sendable {
         let ae = abs(predictions - targets).sum()
         sumAbsoluteError += ae.item(Float.self)
         total += targets.size
+    }
+
+    public func update(output: MLXArray, target: MLXArray) {
+        update(predictions: output, targets: target)
     }
 
     public func compute() -> Float {

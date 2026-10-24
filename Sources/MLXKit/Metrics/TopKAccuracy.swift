@@ -11,6 +11,9 @@ import MLX
 /// print(topK.compute()) // e.g. 0.95
 /// ```
 public final class TopKAccuracy: Metric, @unchecked Sendable {
+    public typealias Output = MLXArray
+    public typealias Target = MLXArray
+
     public let name: String
     public let k: Int
 
@@ -36,6 +39,10 @@ public final class TopKAccuracy: Metric, @unchecked Sendable {
         let matches = (topKIndices .== expandedTargets).asType(.int32).sum(axis: -1)
         correct += matches.sum().item(Int.self)
         total += targets.size
+    }
+
+    public func update(output: MLXArray, target: MLXArray) {
+        update(predictions: output, targets: target)
     }
 
     public func compute() -> Float {

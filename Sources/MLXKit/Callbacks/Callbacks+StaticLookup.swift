@@ -10,11 +10,6 @@ extension Callback where Self == ProgressReporter {
     public static var progressReporter: ProgressReporter { ProgressReporter() }
 }
 
-extension Callback where Self == TerminateOnNaN {
-    /// Terminates training if loss becomes NaN or Inf.
-    public static var terminateOnNaN: TerminateOnNaN { TerminateOnNaN() }
-}
-
 extension Callback where Self == History {
     /// History recorder that stores per-epoch metrics.
     public static var history: History { History() }

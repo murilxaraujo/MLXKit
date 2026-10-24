@@ -1,37 +1,20 @@
 import MLX
 
-/// A stateful metric that accumulates values across batches and computes
-/// an aggregate result.
+/// A stateful metric over typed model outputs and targets.
 ///
-/// Metrics follow an `update` / `compute` / `reset` lifecycle:
-///
-/// 1. **Update** — call ``update(predictions:targets:)`` after each batch to
-///    feed new observations into the metric's internal accumulators.
-/// 2. **Compute** — call ``compute()`` at any point to read the current
-///    aggregate value (e.g. running accuracy).
-/// 3. **Reset** — call ``reset()`` at the start of each epoch (or whenever
-///    you want to clear accumulated state).
-///
-/// ```swift
-/// var accuracy = Accuracy()
-/// for batch in dataLoader {
-///     let logits = model(batch.inputs)
-///     accuracy.update(predictions: logits, targets: batch.labels)
-/// }
-/// print("Epoch accuracy: \(accuracy.compute())")
-/// accuracy.reset()
-/// ```
-public protocol Metric: AnyObject, Sendable {
+/// The training engine resets metrics before each independent epoch or
+/// evaluation run, calls `update(output:target:)` once per batch, and reads
+/// `compute()` at the reporting boundary. Implementations own their aggregation
+/// across examples and should not assume that every batch has the same size.
+public protocol Metric<Output, Target>: AnyObject {
+    associatedtype Output
+    associatedtype Target
+
     /// A human-readable name for this metric (e.g. `"accuracy"`).
     var name: String { get }
 
-    /// Incorporates a new batch of predictions and targets into the
-    /// metric's running state.
-    ///
-    /// - Parameters:
-    ///   - predictions: Model outputs (logits, probabilities, or values).
-    ///   - targets: Ground-truth values or class indices.
-    func update(predictions: MLXArray, targets: MLXArray)
+    /// Incorporates one batch of model outputs and targets.
+    func update(output: Output, target: Target)
 
     /// Returns the current aggregate metric value.
     ///

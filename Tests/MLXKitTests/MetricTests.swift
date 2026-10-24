@@ -26,10 +26,6 @@ struct MetricStaticLookupTests {
         #expect(metric.name == "mae")
     }
 
-    @Test func runningLossLookup() {
-        let metric: RunningLoss = .runningLoss
-        #expect(metric.name == "loss")
-    }
 }
 
 // MARK: - Configuration tests (no GPU needed)
@@ -42,16 +38,10 @@ struct MetricConfigurationTests {
         #expect(metric.name == "top3_accuracy")
     }
 
-    @Test func runningLossCustomName() {
-        let metric = RunningLoss(name: "val_loss")
-        #expect(metric.name == "val_loss")
-    }
-
     @Test func computeReturnsZeroBeforeUpdate() {
         #expect(Accuracy().compute() == 0)
         #expect(TopKAccuracy(k: 5).compute() == 0)
         #expect(MeanSquaredError().compute() == 0)
         #expect(MeanAbsoluteError().compute() == 0)
-        #expect(RunningLoss().compute() == 0)
     }
 }

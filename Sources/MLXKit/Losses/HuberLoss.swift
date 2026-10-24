@@ -3,7 +3,7 @@ import MLXNN
 
 /// Computes the Huber loss, a robust alternative to MSE that is less sensitive to outliers.
 ///
-/// Wraps ``MLXNN/huberLoss(inputs:targets:delta:reduction:)``.
+/// Wraps the MLXNN Huber loss operation.
 ///
 /// For residuals smaller than `delta`, Huber loss behaves like MSE; for larger
 /// residuals it behaves like L1. This combines the stability of L1 with the

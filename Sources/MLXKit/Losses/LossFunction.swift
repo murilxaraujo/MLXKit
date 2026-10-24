@@ -10,7 +10,7 @@ import MLX
 /// let loss: any LossFunction = .crossEntropy
 /// let value = loss(predictions: logits, targets: labels)
 /// ```
-public protocol LossFunction: Sendable {
+public protocol LossFunction: Objective<MLXArray, MLXArray>, Sendable {
     /// The reduction strategy applied to per-sample losses.
     var reduction: Reduction { get }
 
@@ -21,4 +21,10 @@ public protocol LossFunction: Sendable {
     ///   - targets: Ground-truth values or class indices.
     /// - Returns: The reduced loss value, shaped according to ``reduction``.
     func callAsFunction(predictions: MLXArray, targets: MLXArray) -> MLXArray
+}
+
+extension LossFunction {
+    public func callAsFunction(output: MLXArray, target: MLXArray) -> MLXArray {
+        self(predictions: output, targets: target)
+    }
 }

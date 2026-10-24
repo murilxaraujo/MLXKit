@@ -49,9 +49,9 @@ let logits = engine.predict(model, input: images)
 ```
 
 The actual data and configuration types must align with `Model.Input`,
-`Model.Output`, and the objective target type. Issue #11 owns the data
-abstraction names and batching contract. `predict` returns the model's complete
-`Output` type, as decided in issue #10.
+`Model.Output`, and the objective target type. M2 training consumes asynchronous
+sequences of `Batch<Model.Input, Target>`. M4 owns the generalized sample-source
+and collation pipeline. `predict` returns the model's complete `Output` type.
 
 These are proposed public signatures, not compilable examples against MLXKit
 1.x. The classifier and dataset declarations are abbreviated; the model
@@ -122,10 +122,10 @@ let evaluation = try await engine.evaluate(
 batch. MLXKit still computes gradients with MLX, applies the configured
 MLXOptimizers optimizer, updates metrics/logs, and dispatches lifecycle events.
 The step does not own the optimizer or mutate trainable parameters directly.
-M2 defines how a custom step's output participates in metrics, how often the
-model is evaluated, and how errors are reported. When supplied, the custom
-step replaces the configured objective for that operation; passing the same
-step to evaluation keeps its reported loss consistent with training.
+The custom step replaces the configured objective for that operation; passing
+the same step to evaluation keeps its reported loss consistent with training.
+Metrics continue to receive model outputs and targets, not the custom scalar
+step result.
 
 Users who need a different gradient algorithm, multiple optimizer updates per
 batch, or full control over parameter mutation can use MLX and MLXOptimizers
@@ -139,8 +139,8 @@ That protocol does not expose a common learning-rate property, although many
 concrete optimizers do. MLXKit must not use reflection or a switch over known
 optimizer classes to set rates.
 
-The design adds a narrow optional capability, provisionally
-`LearningRateControllable`, for an optimizer that can accept a rate update:
+The design adds a narrow optional capability, `LearningRateControllable`, for
+an optimizer that can accept a rate update:
 
 ```swift
 protocol LearningRateControllable: Optimizer {
@@ -148,13 +148,14 @@ protocol LearningRateControllable: Optimizer {
 }
 ```
 
-MLXKit can provide conformances/adapters for supported MLXOptimizers types;
+MLXKit provides conformances/adapters for supported MLXOptimizers types;
 custom optimizers can adopt the capability when they support it. The existing
 MLXKit schedule abstraction (or an equivalent step-to-rate closure) computes
 the value. MLXKit does not reimplement optimizer behavior. Configuring a
 schedule with an optimizer that does not support rate updates must fail clearly
-before training rather than silently ignore the schedule. M2 defines exact
-validation and step-count semantics.
+before training rather than silently ignore the schedule. M2 starts at schedule
+step zero and advances once per successful optimizer update; evaluation does
+not read or mutate the schedule.
 
 ## Lifecycle, cancellation, and errors
 
@@ -162,18 +163,21 @@ validation and step-count semantics.
   operations because data may be asynchronous and failures must reach callers.
 - Callback hooks are synchronous and throwing. A callback failure propagates
   from `fit`; it is not converted to a log message or ignored.
-- Swift task cancellation is surfaced as `CancellationError`. The engine checks
-  cancellation at documented loop boundaries; exact checks and cleanup order
-  are tested in M2.
-- A callback can request an orderly early stop without turning it into an
-  error. M2 specifies when that request takes effect.
-- Data-source, configuration, non-finite objective, optimizer, and callback
-  failures must not be reported as successful training. M2 defines concrete
-  error types and the detailed validation surface.
+- Swift task cancellation is surfaced as `CancellationError`. The engine
+  checks cancellation before batch work, after callbacks, and after sequence
+  completion.
+- A callback can request an orderly early stop from `onBatchEnd` or
+  `onEpochEnd`; the engine completes the current batch/epoch boundary.
+- Objective/gradient, data-source, configuration, schedule, and callback
+  failures are thrown. Non-finite objectives and gradients fail before the
+  optimizer update.
+- Once train-begin dispatch starts, train-end dispatch runs exactly once on
+  completion, early stop, cancellation, or failure. The original run error
+  wins if train-end also throws.
+- `fit`, `evaluate`, and `predict` restore the model's prior train/eval mode.
 
-The lifecycle remains observable through callbacks and per-epoch history. M2
-owns exact hook order, validation timing, partial-run history, cleanup behavior,
-and whether terminal callbacks run after cancellation or callback failure.
+The lifecycle remains observable through callbacks and per-epoch history. See
+<doc:M2TrainingSemantics> for exact event order and failure cleanup.
 
 ## Alternatives and rationale
 
@@ -190,14 +194,9 @@ and whether terminal callbacks run after cancellation or callback failure.
   source of optimizer algorithms; the optional rate-control capability only
   describes one optional property of an optimizer.
 
-## Deferred to M2 and later milestones
+## Deferred to later milestones
 
-- Issue #11 defines the batch type consumed by `TrainingStep`.
-- M2 defines callback ordering, cancellation checkpoints, early-stop timing,
-  typed errors, optimizer schedule step counts, metric output reuse, and
-  integration tests.
 - M5 owns gradient controls and training controls beyond one MLX gradient and
   one configured optimizer update per batch.
 
-The integrated names and signatures are in <doc:API2Design>, pending pair
-approval.
+The integrated names and signatures are in <doc:API2Design>.

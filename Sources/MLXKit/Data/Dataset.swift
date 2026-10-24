@@ -13,7 +13,8 @@ import MLX
 ///     subscript(index: Int) -> Sample { ... }
 /// }
 /// ```
-public protocol Dataset: RandomAccessCollection where Index == Int, Element == Sample {
+public protocol Dataset: RandomAccessCollection
+where Index == Int, Element == Sample<MLXArray, MLXArray> {
     /// The number of samples in the dataset.
     var count: Int { get }
 

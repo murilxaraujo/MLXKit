@@ -12,7 +12,8 @@ import MLX
 /// }
 /// ```
 public struct DataLoader<D: Dataset>: AsyncSequence {
-    public typealias Element = Batch
+    public typealias Element = Batch<MLXArray, MLXArray>
+    public typealias Failure = Never
 
     public let dataset: D
     public let batchSize: Int
@@ -36,6 +37,9 @@ public struct DataLoader<D: Dataset>: AsyncSequence {
     }
 
     public struct Iterator: AsyncIteratorProtocol {
+        public typealias Element = Batch<MLXArray, MLXArray>
+        public typealias Failure = Never
+
         private let loader: DataLoader<D>
         private let indices: [Int]
         private var offset: Int = 0
@@ -49,7 +53,7 @@ public struct DataLoader<D: Dataset>: AsyncSequence {
             self.indices = idx
         }
 
-        public mutating func next() async -> Batch? {
+        public mutating func next() async -> Element? {
             let remaining = indices.count - offset
             guard remaining > 0 else { return nil }
 
@@ -69,4 +73,3 @@ public struct DataLoader<D: Dataset>: AsyncSequence {
         }
     }
 }
-

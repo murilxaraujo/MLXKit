@@ -3,7 +3,7 @@ import MLXNN
 
 /// Computes binary cross-entropy loss between logits and binary targets.
 ///
-/// Wraps ``MLXNN/binaryCrossEntropy(logits:targets:weights:withLogits:reduction:)``.
+/// Wraps the MLXNN binary cross-entropy operation.
 ///
 /// ```swift
 /// let loss = BinaryCrossEntropyLoss()

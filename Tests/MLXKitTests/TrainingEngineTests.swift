@@ -4,27 +4,148 @@ import MLXNN
 import MLXOptimizers
 @testable import MLXKit
 
+private final class IntegerModel: Module, TrainableModel {
+    typealias Input = Int
+    typealias Output = Int
+
+    func callAsFunction(_ input: Int) -> Int { input }
+}
+
+private final class IntegerMetric: Metric {
+    typealias Output = Int
+    typealias Target = Int
+
+    let name: String
+    init(name: String) { self.name = name }
+    func update(output: Int, target: Int) {}
+    func compute() -> Float { 0 }
+    func reset() {}
+}
+
+private struct EmptyBatches<Element>: AsyncSequence {
+    typealias Failure = Never
+
+    func makeAsyncIterator() -> Iterator { Iterator() }
+
+    struct Iterator: AsyncIteratorProtocol {
+        mutating func next() async -> Element? { nil }
+    }
+}
+
+private struct FixedBatches<Element>: AsyncSequence {
+    typealias Failure = Never
+    let batches: [Element]
+    var readCounter: BatchReadCounter? = nil
+
+    func makeAsyncIterator() -> Iterator {
+        Iterator(batches: batches, readCounter: readCounter)
+    }
+
+    struct Iterator: AsyncIteratorProtocol {
+        let batches: [Element]
+        let readCounter: BatchReadCounter?
+        var index = 0
+
+        mutating func next() async -> Element? {
+            readCounter?.increment()
+            guard index < batches.count else { return nil }
+            defer { index += 1 }
+            return batches[index]
+        }
+    }
+}
+
+private final class BatchReadCounter: @unchecked Sendable {
+    private(set) var count = 0
+    func increment() { count += 1 }
+}
+
+private enum BatchSequenceError: Error, Equatable {
+    case failed
+}
+
+private struct FailingBatches<Item>: AsyncSequence {
+    typealias Element = Item
+    typealias Failure = BatchSequenceError
+    typealias AsyncIterator = Iterator
+
+    func makeAsyncIterator() -> Iterator { Iterator() }
+
+    struct Iterator: AsyncIteratorProtocol {
+        typealias Element = Item
+        typealias Failure = BatchSequenceError
+
+        mutating func next() async throws -> Item? {
+            throw BatchSequenceError.failed
+        }
+    }
+}
+
+private struct FixedLearningRateSchedule: LRSchedule {
+    func learningRate(atStep step: Int) -> Float { 0.01 }
+}
+
+private enum CallbackFixtureError: Error, Equatable {
+    case failedAtTrainBegin
+    case failedAtBatchBegin
+    case failedAtTrainEnd
+}
+
+private final class LifecycleCallback: Callback, @unchecked Sendable {
+    private(set) var events: [String] = []
+    let failure: CallbackFixtureError?
+    let cancelAtBatchBegin: Bool
+
+    init(failure: CallbackFixtureError? = nil, cancelAtBatchBegin: Bool = false) {
+        self.failure = failure
+        self.cancelAtBatchBegin = cancelAtBatchBegin
+    }
+
+    func onTrainBegin(state: TrainingState) throws {
+        events.append("trainBegin")
+        if failure == .failedAtTrainBegin { throw CallbackFixtureError.failedAtTrainBegin }
+    }
+
+    func onBatchBegin(state: TrainingState) throws {
+        events.append("batchBegin")
+        if failure == .failedAtBatchBegin { throw CallbackFixtureError.failedAtBatchBegin }
+        if cancelAtBatchBegin {
+            withUnsafeCurrentTask { $0?.cancel() }
+        }
+    }
+
+    func onTrainEnd(state: TrainingState) throws {
+        events.append("trainEnd")
+        if failure == .failedAtTrainEnd { throw CallbackFixtureError.failedAtTrainEnd }
+    }
+}
+
+private final class UncheckedSendableBox<Value>: @unchecked Sendable {
+    let value: Value
+    init(_ value: Value) { self.value = value }
+}
+
 @Suite("TrainingConfiguration")
 struct TrainingConfigurationTests {
     @Test func storesAllComponents() {
         let config = TrainingConfiguration(
             optimizer: Adam(learningRate: 0.001),
-            loss: MSELoss(),
+            objective: MSELoss(),
             metrics: [Accuracy(), MeanSquaredError()],
-            lrSchedule: CosineDecay(initialLR: 0.001, totalSteps: 1000)
+            learningRateSchedule: CosineDecay(initialLR: 0.001, totalSteps: 1000)
         )
         #expect(config.metrics.count == 2)
-        #expect(config.lrSchedule != nil)
+        #expect(config.learningRateSchedule != nil)
     }
 
-    @Test func canBeReplacedByRecompiling() {
+    @Test func configurationsAreIndependentValues() {
         let config1 = TrainingConfiguration(
             optimizer: Adam(learningRate: 0.001),
-            loss: MSELoss()
+            objective: MSELoss()
         )
         let config2 = TrainingConfiguration(
             optimizer: SGD(learningRate: 0.01),
-            loss: CrossEntropyLoss()
+            objective: CrossEntropyLoss()
         )
         // Both configs exist independently
         #expect(config1.metrics.isEmpty)
@@ -34,8 +155,251 @@ struct TrainingConfigurationTests {
 
 @Suite("TrainingError")
 struct TrainingErrorTests {
-    @Test func notCompiledErrorMessage() {
-        let error = TrainingError.notCompiled
-        #expect(error.errorDescription?.contains("compile") == true)
+    @Test func invalidEpochCountHasActionableMessage() {
+        let error = TrainingError.invalidEpochCount(0)
+        #expect(error.errorDescription?.contains("greater than zero") == true)
+    }
+
+    @Test func unsupportedScheduledOptimizerFailsBeforeDataIteration() async throws {
+        let configuration = TrainingConfiguration(
+            optimizer: MultiOptimizer(optimizers: [SGD(learningRate: 0.1)]),
+            objective: ClosureObjective<Int, Int> { _, _ in MLXArray(0) },
+            learningRateSchedule: FixedLearningRateSchedule()
+        )
+
+        do {
+            _ = try await TrainingEngine().fit(
+                IntegerModel(),
+                configuration: configuration,
+                data: EmptyBatches<Batch<Int, Int>>(),
+                epochs: 1
+            )
+            Issue.record("Expected unsupported scheduled optimizer to be rejected")
+        } catch let error as TrainingError {
+            #expect(error == .unsupportedLearningRateSchedule)
+        }
+    }
+
+    @Test func duplicateMetricNamesFailBeforeTraining() async throws {
+        let metricA = IntegerMetric(name: "score")
+        let metricB = IntegerMetric(name: "score")
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.1),
+            objective: ClosureObjective<Int, Int> { _, _ in MLXArray(0) },
+            metrics: [metricA, metricB]
+        )
+
+        do {
+            _ = try await TrainingEngine().fit(
+                IntegerModel(),
+                configuration: configuration,
+                data: EmptyBatches<Batch<Int, Int>>(),
+                epochs: 1
+            )
+            Issue.record("Expected duplicate metric names to be rejected")
+        } catch let error as TrainingError {
+            #expect(error == .metricNameCollision("score"))
+        }
+    }
+
+    @Test func emptyTrainingSequenceThrowsInsteadOfRecordingZeroLoss() async throws {
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.1),
+            objective: ClosureObjective<Int, Int> { _, _ in MLXArray(0) }
+        )
+
+        do {
+            _ = try await TrainingEngine().fit(
+                IntegerModel(),
+                configuration: configuration,
+                data: EmptyBatches<Batch<Int, Int>>(),
+                epochs: 1
+            )
+            Issue.record("Expected empty training data to be rejected")
+        } catch let error as TrainingError {
+            #expect(error == .emptyTrainingData)
+        }
+    }
+
+    @Test func nonpositiveBatchSampleCountThrowsBeforeForwardPass() async throws {
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.1),
+            objective: ClosureObjective<Int, Int> { _, _ in MLXArray(0) }
+        )
+
+        do {
+            _ = try await TrainingEngine().fit(
+                IntegerModel(),
+                configuration: configuration,
+                data: FixedBatches(batches: [Batch(input: 1, target: 1, sampleCount: 0)]),
+                epochs: 1
+            )
+            Issue.record("Expected a nonpositive sample count to be rejected")
+        } catch let error as TrainingError {
+            #expect(error == .invalidSampleCount(0))
+        }
+    }
+
+    @Test func emptyEvaluationThrowsAndRestoresModelMode() async throws {
+        let model = IntegerModel()
+        model.train(true)
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.1),
+            objective: ClosureObjective<Int, Int> { _, _ in MLXArray(0) }
+        )
+
+        do {
+            _ = try await TrainingEngine().evaluate(
+                model,
+                configuration: configuration,
+                data: EmptyBatches<Batch<Int, Int>>()
+            )
+            Issue.record("Expected empty evaluation data to be rejected")
+        } catch let error as TrainingError {
+            #expect(error == .emptyEvaluationData)
+        }
+
+        #expect(model.training)
+    }
+
+    @Test(arguments: ["", "loss", "val_accuracy"])
+    func reservedMetricNamesFailBeforeTraining(name: String) async throws {
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.1),
+            objective: ClosureObjective<Int, Int> { _, _ in MLXArray(0) },
+            metrics: [IntegerMetric(name: name)]
+        )
+
+        do {
+            _ = try await TrainingEngine().fit(
+                IntegerModel(),
+                configuration: configuration,
+                data: EmptyBatches<Batch<Int, Int>>(),
+                epochs: 1
+            )
+            Issue.record("Expected reserved metric name to be rejected")
+        } catch let error as TrainingError {
+            #expect(error == .metricNameCollision(name))
+        }
+    }
+
+    @Test func callbackFailurePropagatesAndRunsTerminalHook() async throws {
+        let model = IntegerModel()
+        model.train(false)
+        let callback = LifecycleCallback(failure: .failedAtTrainBegin)
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.1),
+            objective: ClosureObjective<Int, Int> { _, _ in MLXArray(0) }
+        )
+
+        do {
+            _ = try await TrainingEngine().fit(
+                model,
+                configuration: configuration,
+                data: EmptyBatches<Batch<Int, Int>>(),
+                epochs: 1,
+                callbacks: [callback]
+            )
+            Issue.record("Expected the callback failure to reach the caller")
+        } catch let error as CallbackFixtureError {
+            #expect(error == .failedAtTrainBegin)
+        }
+
+        #expect(callback.events == ["trainBegin", "trainEnd"])
+        #expect(!model.training)
+    }
+
+    @Test func callbackFailureAtBatchBeginSkipsUpdateAndRunsTrainEnd() async throws {
+        let model = IntegerModel()
+        model.train(false)
+        let callback = LifecycleCallback(failure: .failedAtBatchBegin)
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.1),
+            objective: ClosureObjective<Int, Int> { _, _ in MLXArray(0) }
+        )
+
+        do {
+            _ = try await TrainingEngine().fit(
+                model,
+                configuration: configuration,
+                data: FixedBatches(batches: [Batch(input: 1, target: 1, sampleCount: 1)]),
+                epochs: 1,
+                callbacks: [callback]
+            )
+            Issue.record("Expected the callback failure to reach the caller")
+        } catch let error as CallbackFixtureError {
+            #expect(error == .failedAtBatchBegin)
+        }
+
+        #expect(callback.events == ["trainBegin", "batchBegin", "trainEnd"])
+        #expect(!model.training)
+    }
+
+    @Test func cancellationAtBatchBeginStopsBeforeObjectiveAndPropagates() async throws {
+        let model = IntegerModel()
+        model.train(false)
+        let callback = LifecycleCallback(cancelAtBatchBegin: true)
+        let readCounter = BatchReadCounter()
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.1),
+            objective: ClosureObjective<Int, Int> { _, _ in MLXArray(0) }
+        )
+
+        let modelBox = UncheckedSendableBox(model)
+        let configurationBox = UncheckedSendableBox(configuration)
+        let callbackBox = UncheckedSendableBox(callback)
+        let dataBox = UncheckedSendableBox(
+            FixedBatches(
+                batches: [
+                    Batch(input: 1, target: 1, sampleCount: 1),
+                    Batch(input: 2, target: 2, sampleCount: 1),
+                ],
+                readCounter: readCounter
+            )
+        )
+        let trainingTask = Task {
+            try await TrainingEngine().fit(
+                modelBox.value,
+                configuration: configurationBox.value,
+                data: dataBox.value,
+                epochs: 1,
+                callbacks: [callbackBox.value]
+            )
+        }
+
+        do {
+            _ = try await trainingTask.value
+            Issue.record("Expected task cancellation to propagate")
+        } catch is CancellationError {
+            // Expected: the task was cancelled by onBatchBegin.
+        }
+
+        #expect(callback.events == ["trainBegin", "batchBegin", "trainEnd"])
+        #expect(readCounter.count == 1)
+        #expect(!model.training)
+    }
+
+    @Test func sequenceFailurePropagatesAndRunsTrainEnd() async throws {
+        let model = IntegerModel()
+        let callback = LifecycleCallback()
+        let configuration = TrainingConfiguration(
+            optimizer: SGD(learningRate: 0.1),
+            objective: ClosureObjective<Int, Int> { _, _ in MLXArray(0) }
+        )
+
+        do {
+            _ = try await TrainingEngine().fit(
+                model,
+                configuration: configuration,
+                data: FailingBatches<Batch<Int, Int>>(),
+                epochs: 1,
+                callbacks: [callback]
+            )
+            Issue.record("Expected the batch sequence error to propagate")
+        } catch let error as BatchSequenceError {
+            #expect(error == .failed)
+        }
+
+        #expect(callback.events == ["trainBegin", "trainEnd"])
     }
 }

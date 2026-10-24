@@ -1,44 +1,63 @@
 import Foundation
 import MLX
-import MLXNN
 import MLXOptimizers
 
-/// Stores the optimizer, loss, metrics, and LR schedule for training.
-///
-/// Created by ``TrainingEngine/compile(model:optimizer:loss:metrics:lrSchedule:)``
-/// and consumed by ``TrainingEngine/fit(_:epochs:validationData:callbacks:)``.
-public final class TrainingConfiguration: @unchecked Sendable {
-    /// The optimizer used to update model parameters.
+/// The optimizer, objective, metrics, and optional learning-rate schedule for
+/// one typed model output and target pair.
+public struct TrainingConfiguration<Output, Target> {
     public let optimizer: any Optimizer
-    /// The loss function used to compute training loss.
-    public let loss: any LossFunction
-    /// Metrics to track during training.
-    public let metrics: [any Metric]
-    /// Optional learning rate schedule.
-    public let lrSchedule: (any LRSchedule)?
+    public let objective: any Objective<Output, Target>
+    public let metrics: [any Metric<Output, Target>]
+    public let learningRateSchedule: (any LRSchedule)?
 
-    public init(
+    public init<ObjectiveType: Objective<Output, Target>>(
         optimizer: any Optimizer,
-        loss: any LossFunction,
-        metrics: [any Metric] = [],
-        lrSchedule: (any LRSchedule)? = nil
+        objective: ObjectiveType,
+        metrics: [any Metric<Output, Target>] = [],
+        learningRateSchedule: (any LRSchedule)? = nil
     ) {
         self.optimizer = optimizer
-        self.loss = loss
+        self.objective = objective
         self.metrics = metrics
-        self.lrSchedule = lrSchedule
+        self.learningRateSchedule = learningRateSchedule
     }
 }
 
-/// Errors that occur during training.
-public enum TrainingError: Error, LocalizedError {
-    /// The model has not been compiled before calling fit/evaluate.
-    case notCompiled
+/// Errors reported by the training and evaluation workflow.
+public enum TrainingError: Error, LocalizedError, Equatable {
+    case invalidEpochCount(Int)
+    case emptyTrainingData
+    case emptyEvaluationData
+    case invalidSampleCount(Int)
+    case invalidLearningRate(Float)
+    case nonScalarObjective(shape: [Int])
+    case metricNameCollision(String)
+    case unsupportedLearningRateSchedule
+    case nonFiniteObjective
+    case nonFiniteGradient
 
     public var errorDescription: String? {
         switch self {
-        case .notCompiled:
-            return "Model has not been compiled. Call TrainingEngine.compile() before fit() or evaluate()."
+        case .invalidEpochCount(let epochs):
+            "Epoch count must be greater than zero; received \(epochs)."
+        case .emptyTrainingData:
+            "Training data produced no batches."
+        case .emptyEvaluationData:
+            "Evaluation data produced no batches."
+        case .invalidSampleCount(let count):
+            "Batch sampleCount must be greater than zero; received \(count)."
+        case .invalidLearningRate(let value):
+            "Learning rate must be finite and nonnegative; received \(value)."
+        case .nonScalarObjective(let shape):
+            "Training objective must be scalar; received shape \(shape). Reduce the objective explicitly."
+        case .metricNameCollision(let name):
+            "Metric name '\(name)' collides with a reserved or duplicate training log key."
+        case .unsupportedLearningRateSchedule:
+            "The configured optimizer does not support learning-rate updates required by this schedule."
+        case .nonFiniteObjective:
+            "Training objective is not finite; optimizer update was not applied."
+        case .nonFiniteGradient:
+            "Training gradient contains a non-finite value; optimizer update was not applied."
         }
     }
 }

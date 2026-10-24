@@ -15,27 +15,27 @@ public final class CallbackList: @unchecked Sendable {
         self.callbacks = callbacks
     }
 
-    public func onTrainBegin(state: TrainingState) {
-        for callback in callbacks { callback.onTrainBegin(state: state) }
+    public func onTrainBegin(state: TrainingState) throws {
+        for callback in callbacks { try callback.onTrainBegin(state: state) }
     }
 
-    public func onEpochBegin(state: TrainingState) {
-        for callback in callbacks { callback.onEpochBegin(state: state) }
+    public func onEpochBegin(state: TrainingState) throws {
+        for callback in callbacks { try callback.onEpochBegin(state: state) }
     }
 
-    public func onBatchBegin(state: TrainingState) {
-        for callback in callbacks { callback.onBatchBegin(state: state) }
+    public func onBatchBegin(state: TrainingState) throws {
+        for callback in callbacks { try callback.onBatchBegin(state: state) }
     }
 
-    public func onBatchEnd(state: TrainingState) {
-        for callback in callbacks { callback.onBatchEnd(state: state) }
+    public func onBatchEnd(state: TrainingState) throws {
+        for callback in callbacks { try callback.onBatchEnd(state: state) }
     }
 
-    public func onEpochEnd(state: TrainingState) {
-        for callback in callbacks { callback.onEpochEnd(state: state) }
+    public func onEpochEnd(state: TrainingState) throws {
+        for callback in callbacks { try callback.onEpochEnd(state: state) }
     }
 
-    public func onTrainEnd(state: TrainingState) {
-        for callback in callbacks { callback.onTrainEnd(state: state) }
+    public func onTrainEnd(state: TrainingState) throws {
+        for callback in callbacks { try callback.onTrainEnd(state: state) }
     }
 }

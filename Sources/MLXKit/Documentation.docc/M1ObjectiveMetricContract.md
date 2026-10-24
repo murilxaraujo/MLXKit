@@ -120,12 +120,12 @@ Built-in tensor losses remain convenient when the model output and target are
 - The training engine must not silently choose a reduction for a custom
   objective or unreduced built-in loss.
 
-M2 defines exact accepted shapes, reduction/weighting semantics, uneven-batch
-aggregation, and the validation error for a non-scalar objective. If a built-in
-loss value with `.none` is passed to `fit`, the request must fail clearly or be
-made scalar explicitly; it must not silently proceed to a scalar extraction
-that traps. An explicit closure can reduce the unreduced array before returning
-it, but the engine does not select a reduction on the caller's behalf.
+The implemented engine accepts only shape `[]`; shape `[1]` is not scalar. If a
+built-in loss value with `.none` is passed to `fit`, the engine throws
+`TrainingError.nonScalarObjective`. An explicit closure can reduce the
+unreduced array before returning it, but the engine does not select a reduction
+on the caller's behalf. Epoch loss is the `sampleCount`-weighted mean of scalar
+batch objectives; see <doc:M2TrainingSemantics>.
 
 ## Typed metric contract
 
@@ -153,13 +153,13 @@ The lifecycle is:
 
 Metric names must be stable and unique within one training configuration. The
 training log reserves `loss` for the objective and uses a documented validation
-prefix. M2 owns exact collision validation, empty-input behavior, and batch
-aggregation semantics.
+prefix. MLXKit rejects empty, duplicate, `loss`, and `val_`-prefixed metric
+names before training. Metrics reset before each training epoch and evaluation;
+they update once per batch using pre-update training predictions.
 
-`RunningLoss` should not conform to `Metric`: it does not consume model output
-and target, and its current adapter treats its arguments as fake predictions
-and targets. Loss reporting and aggregation belong to the trainer. A metric
-measures a separate property of model output/target pairs.
+`RunningLoss` is a standalone helper, not a `Metric`: it does not consume model
+output and target. Loss reporting and aggregation belong to the trainer. A
+metric measures a separate property of model output/target pairs.
 
 For example, a custom metric can inspect one field of a structured output:
 
@@ -195,8 +195,8 @@ final class MeanEmbeddingEnergy: Metric {
 ```
 
 The metric receives the target because that is the shared protocol contract;
-this example does not need it. The value is a scalar for logging, while M2
-defines empty-input and aggregation semantics for the production API.
+this example does not need it. The value is a scalar for logging. See
+<doc:M2TrainingSemantics> for reporting and empty-input behavior.
 
 ## Examples and compatibility
 
@@ -212,14 +212,12 @@ defines empty-input and aggregation semantics for the production API.
   the M0 compatibility policy. The integrated API design must record these
   source changes and migration guidance.
 
-## Decisions deferred to M2 and later milestones
+## Decisions deferred to later milestones
 
-- M2 tests scalar objective validation, reduction and sample-weighting
-  semantics, metric aggregation for uneven batches, and failure behavior.
 - M1 issue #8 aligns objective and metric generic types with model and target
   types in the training configuration.
-- <doc:API2Design> selects the integrated names, type-erasure/storage direction,
-  concurrency constraints, and migration map; its pair review is still open.
+- <doc:API2Design> records the integrated names, type-erasure/storage direction,
+  concurrency constraints, and migration map.
 - Metrics remain scalar in this initial design. Non-scalar metric results would
   require a separately reviewed logging/result model rather than an implicit
   conversion to `Float`.

@@ -2,7 +2,7 @@
 
 A high-level Swift framework for machine learning on Apple silicon, built on [MLX Swift](https://github.com/ml-explore/mlx-swift).
 
-MLXKit provides a Keras-style training API: define a model, compile it with an optimizer and loss, call `fit()`. It handles gradient computation, metric tracking, callbacks, learning rate scheduling, and checkpointing.
+MLXKit provides a typed training workflow: define a model, create a typed training configuration, and call `fit()`. It coordinates gradient computation, metric tracking, callbacks, learning-rate scheduling, and checkpointing while MLX and MLXOptimizers provide the numerical core.
 
 ## Requirements
 
@@ -39,35 +39,34 @@ final class Classifier: Module, TrainableModel {
     let linear1 = Linear(inputDimensions: 784, outputDimensions: 128)
     let linear2 = Linear(inputDimensions: 128, outputDimensions: 10)
 
-    func forward(_ input: MLXArray) -> MLXArray {
+    func callAsFunction(_ input: MLXArray) -> MLXArray {
         var x = linear1(input)
         x = maximum(x, 0)
         return linear2(x)
     }
 }
 
-// 2. Compile
+// 2. Configure
 let model = Classifier()
 let engine = TrainingEngine()
-let config = engine.compile(
-    model: model,
+let config = TrainingConfiguration(
     optimizer: Adam(learningRate: 1e-3),
-    loss: CrossEntropyLoss(),
+    objective: CrossEntropyLoss(),
     metrics: [Accuracy()],
-    lrSchedule: CosineDecay(initialLR: 1e-3, totalSteps: 10000)
+    learningRateSchedule: CosineDecay(initialLR: 1e-3, totalSteps: 10000)
 )
 
 // 3. Train
 let loader = DataLoader(dataset: trainData, batchSize: 32, shuffle: true)
 let history = try await engine.fit(
-    model, config: config, data: loader,
+    model, configuration: config, data: loader,
     epochs: 10,
     validationData: valLoader,
     callbacks: [ProgressReporter(), EarlyStopping(monitor: "val_loss", patience: 3)]
 )
 
 // 4. Evaluate & predict
-let metrics = try await engine.evaluate(model, config: config, data: testLoader)
+let metrics = try await engine.evaluate(model, configuration: config, data: testLoader)
 let output = engine.predict(model, input: newData)
 
 // 5. Save & load
@@ -79,10 +78,10 @@ let info = try Checkpointing.load(into: restoredModel, from: checkpointURL)
 
 | Module | Description |
 |---|---|
-| **Training Engine** | Keras-style `compile()` / `fit()` / `evaluate()` / `predict()` |
+| **Training Engine** | Typed `fit()` / `evaluate()` / `predict()` over async batch sequences |
 | **Losses** | CrossEntropy, BCE, MSE, L1, Huber, KLDiv with configurable reduction |
-| **Metrics** | Accuracy, TopK, MSE, MAE, RunningLoss with batch accumulation |
-| **Callbacks** | EarlyStopping, ModelCheckpoint, ProgressReporter, TerminateOnNaN, Lambda |
+| **Metrics** | Accuracy, TopK, MSE, and MAE with batch accumulation; `RunningLoss` is a standalone helper |
+| **Callbacks** | EarlyStopping, ModelCheckpoint, ProgressReporter, Lambda |
 | **Data** | `Dataset` protocol, `InMemoryDataset`, `AsyncSequence`-based `DataLoader` |
 | **LR Schedules** | CosineDecay, StepDecay, ExponentialDecay, composable Warmup |
 | **Serialization** | Weight save/load and full checkpoint (model + epoch + metadata) via safetensors |
@@ -106,8 +105,9 @@ See the [Makefile](Makefile) for all available commands.
 ## Documentation
 
 Full API documentation is available at **[murilxaraujo.github.io/MLXKit](https://murilxaraujo.github.io/MLXKit/documentation/mlxkit)**.
+See the [M2 training semantics](Sources/MLXKit/Documentation.docc/M2TrainingSemantics.md) for scalar objectives, aggregation, schedules, callback lifecycle, cancellation, and failure behavior.
 Read the [MLXKit 2.0 product scope](Sources/MLXKit/Documentation.docc/ProductScope.md) for its target users, product goals, non-goals, and roadmap success criteria.
-See the draft [MLXKit 2.0 API design and migration map](Sources/MLXKit/Documentation.docc/API2Design.md) for the integrated M1 proposal. This design is not the current 1.x API reference.
+See the [integrated MLXKit 2.0 API design](Sources/MLXKit/Documentation.docc/API2Design.md) for the full API direction; its generalized sample-source data pipeline remains deferred to M4.
 See the [platform support matrix](Sources/MLXKit/Documentation.docc/PlatformSupport.md), [compatibility policy](Sources/MLXKit/Documentation.docc/CompatibilityPolicy.md), [MLX responsibility boundary](Sources/MLXKit/Documentation.docc/MLXKitAndMLX.md), and [reference workload plan](Sources/MLXKit/Documentation.docc/ReferenceWorkloads.md) for the M0 product contract.
 
 To build locally:

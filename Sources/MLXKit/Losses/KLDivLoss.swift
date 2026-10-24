@@ -3,7 +3,7 @@ import MLXNN
 
 /// Computes the Kullback-Leibler divergence loss.
 ///
-/// Wraps ``MLXNN/klDivLoss(inputs:targets:axis:reduction:)``.
+/// Wraps the MLXNN KL-divergence loss operation.
 ///
 /// Measures how one probability distribution diverges from a target distribution.
 /// Predictions should be log-probabilities and targets should be probabilities.

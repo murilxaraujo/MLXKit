@@ -29,7 +29,7 @@ public struct InMemoryDataset: Dataset, @unchecked Sendable {
         self.labels = labels
     }
 
-    public subscript(index: Int) -> Sample {
+    public subscript(index: Int) -> Sample<MLXArray, MLXArray> {
         Sample(features: features[index], labels: labels[index])
     }
 }
