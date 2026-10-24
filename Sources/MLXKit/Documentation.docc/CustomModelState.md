@@ -50,15 +50,17 @@ contains the sequence data needed for its full-sequence training step. See
 
 ## Checkpoint boundary
 
-MLXKit's current weight-saving API writes module trainable parameters. Its full
-training checkpoint also records epoch and step metadata. Neither API captures
-an application-owned inference cache or serializes arbitrary temporary forward
-state. After loading weights, start generation with an empty cache.
+MLXKit's weight-saving API writes module trainable parameters. Training-progress
+artifacts can add completed-epoch and optimizer-update counters, but they do not
+restore optimizer state. Resumable training artifacts require an optimizer that
+conforms to ``CheckpointableOptimizer``. None of these formats captures an
+application-owned inference cache or arbitrary temporary forward state. After
+loading weights, start generation with an empty cache.
 
 Do not treat cache contents as model weights or as resumable training state.
-This guide does not define cache serialization, a cache ownership protocol, or
-future checkpoint formats; checkpoint and resume behavior beyond the current
-API remains a separate milestone.
+This guide does not define cache serialization or a cache ownership protocol.
+See <doc:M6PersistenceSemantics> for artifact kinds, resume boundaries, and
+compatibility limits.
 
 ## Scope
 

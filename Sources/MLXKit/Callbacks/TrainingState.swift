@@ -16,6 +16,16 @@ public final class TrainingState: @unchecked Sendable {
     /// The current batch within the epoch (zero-indexed).
     public var batch: Int = 0
 
+    /// Number of successful optimizer updates completed so far. Unlike
+    /// ``batch``, this advances once per optimizer update and can be restored
+    /// when resuming from an epoch-boundary checkpoint.
+    public var optimizerStep: Int = 0
+
+    /// Whether the current epoch consumed its complete data sequence. A
+    /// callback-requested stop during a batch leaves this false, so callers do
+    /// not mistake a batch-boundary stop for epoch-boundary resumable progress.
+    public var epochCompleted: Bool = false
+
     /// The total number of batches in the current epoch, if known.
     public var totalBatches: Int?
 

@@ -11,7 +11,7 @@ tensor operations, autodiff, model parameters, and device execution.
    implementing `callAsFunction(_:)`.
 2. Create a ``TrainingConfiguration`` with an MLXOptimizers optimizer, an
    objective, optional typed metrics, and an optional learning-rate schedule.
-3. Call ``TrainingEngine/fit(_:configuration:data:epochs:trainingStep:callbacks:)``
+3. Call ``TrainingEngine/fit(_:configuration:data:epochs:resumeFrom:trainingStep:callbacks:)``
    with an asynchronous sequence of typed ``Batch`` values. The engine
    computes MLX gradients and applies one optimizer update per valid batch.
 4. Optionally provide a validation sequence. The engine logs `val_loss` and

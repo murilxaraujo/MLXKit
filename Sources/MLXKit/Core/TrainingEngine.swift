@@ -14,11 +14,22 @@ public final class TrainingEngine: @unchecked Sendable {
     public init() {}
 
     /// Trains a model from a typed asynchronous sequence of batches.
+    ///
+    /// - Parameters:
+    ///   - model: The model to train.
+    ///   - configuration: Objective, optimizer, and training controls.
+    ///   - data: A re-iterable sequence of complete batches.
+    ///   - epochs: Total target epoch count, not additional epochs after resume.
+    ///   - resumeFrom: Progress from a completed-epoch checkpoint. Recreate
+    ///     `data` so iteration starts at the next epoch.
+    ///   - trainingStep: Optional scalar-objective override.
+    ///   - callbacks: Lifecycle callbacks for this fit call.
     public func fit<Model: TrainableModel, Target, Data: AsyncSequence>(
         _ model: Model,
         configuration: TrainingConfiguration<Model.Output, Target>,
         data: Data,
         epochs: Int,
+        resumeFrom: TrainingProgress = .zero,
         trainingStep: TrainingStep<Model, Target>? = nil,
         callbacks: [any Callback] = []
     ) async throws -> History
@@ -28,6 +39,7 @@ public final class TrainingEngine: @unchecked Sendable {
             configuration: configuration,
             data: data,
             epochs: epochs,
+            resumeFrom: resumeFrom,
             validationData: EmptyBatchSequence<Batch<Model.Input, Target>>(),
             hasValidationData: false,
             trainingStep: trainingStep,
@@ -37,6 +49,17 @@ public final class TrainingEngine: @unchecked Sendable {
 
     /// Trains a model and evaluates it against a validation sequence after
     /// each epoch.
+    ///
+    /// - Parameters:
+    ///   - model: The model to train.
+    ///   - configuration: Objective, optimizer, and training controls.
+    ///   - data: A re-iterable sequence of complete training batches.
+    ///   - epochs: Total target epoch count, not additional epochs after resume.
+    ///   - validationData: A re-iterable sequence of complete validation batches.
+    ///   - resumeFrom: Progress from a completed-epoch checkpoint. Recreate
+    ///     both sequences so iteration starts at the next epoch.
+    ///   - trainingStep: Optional scalar-objective override.
+    ///   - callbacks: Lifecycle callbacks for this fit call.
     public func fit<
         Model: TrainableModel,
         Target,
@@ -48,6 +71,7 @@ public final class TrainingEngine: @unchecked Sendable {
         data: Data,
         epochs: Int,
         validationData: ValidationData,
+        resumeFrom: TrainingProgress = .zero,
         trainingStep: TrainingStep<Model, Target>? = nil,
         callbacks: [any Callback] = []
     ) async throws -> History
@@ -62,6 +86,7 @@ public final class TrainingEngine: @unchecked Sendable {
             configuration: configuration,
             data: data,
             epochs: epochs,
+            resumeFrom: resumeFrom,
             validationData: validationData,
             hasValidationData: true,
             trainingStep: trainingStep,
@@ -79,6 +104,7 @@ public final class TrainingEngine: @unchecked Sendable {
         configuration: TrainingConfiguration<Model.Output, Target>,
         data: Data,
         epochs: Int,
+        resumeFrom: TrainingProgress,
         validationData: ValidationData,
         hasValidationData: Bool,
         trainingStep: TrainingStep<Model, Target>?,
@@ -92,6 +118,16 @@ public final class TrainingEngine: @unchecked Sendable {
     {
         guard epochs > 0 else {
             throw TrainingError.invalidEpochCount(epochs)
+        }
+        guard resumeFrom.completedEpochs >= 0,
+              resumeFrom.optimizerStep >= 0,
+              resumeFrom.completedEpochs < epochs
+        else {
+            throw TrainingError.invalidResumeProgress(
+                completedEpochs: resumeFrom.completedEpochs,
+                optimizerStep: resumeFrom.optimizerStep,
+                totalEpochs: epochs
+            )
         }
         try validateMetricNames(configuration.metrics)
         try validateGradientProcessing(configuration.gradientProcessing)
@@ -116,10 +152,11 @@ public final class TrainingEngine: @unchecked Sendable {
         let callbackList = CallbackList([history] + callbacks)
         let state = TrainingState()
         state.totalEpochs = epochs
+        state.optimizerStep = resumeFrom.optimizerStep
         let wasTraining = model.training
         defer { model.train(wasTraining) }
 
-        var globalStep = 0
+        var globalStep = resumeFrom.optimizerStep
         let objectiveShape = ObjectiveShapeRecorder()
         let lossAndGrad = valueAndGrad(model: model) { (differentiableModel: Model, batch: Batch<Model.Input, Target>) in
             let output = differentiableModel(batch.input)
@@ -145,9 +182,10 @@ public final class TrainingEngine: @unchecked Sendable {
             try callbackList.onTrainBegin(state: state)
             try Task.checkCancellation()
 
-            for epoch in 0..<epochs {
+            for epoch in resumeFrom.completedEpochs..<epochs {
                 state.epoch = epoch
                 state.batch = 0
+                state.epochCompleted = false
                 state.logs = [:]
                 state.shouldStop = false
 
@@ -164,6 +202,7 @@ public final class TrainingEngine: @unchecked Sendable {
                 var pendingGradientSum: ModuleParameters?
                 var pendingSampleCount = 0
                 var pendingBatchCount = 0
+                var stoppedAtBatchBoundary = false
 
                 for try await batch in data {
                     try Task.checkCancellation()
@@ -236,6 +275,7 @@ public final class TrainingEngine: @unchecked Sendable {
                             configuration: configuration,
                             globalStep: &globalStep
                         )
+                        state.optimizerStep = globalStep
                         pendingGradientSum = nil
                         pendingSampleCount = 0
                         pendingBatchCount = 0
@@ -254,15 +294,18 @@ public final class TrainingEngine: @unchecked Sendable {
                                 configuration: configuration,
                                 globalStep: &globalStep
                             )
+                            state.optimizerStep = globalStep
                             pendingGradientSum = nil
                             pendingSampleCount = 0
                             pendingBatchCount = 0
                         }
+                        stoppedAtBatchBoundary = true
                         break
                     }
                     batchIndex += 1
                 }
 
+                state.epochCompleted = !stoppedAtBatchBoundary
                 try Task.checkCancellation()
                 guard batchIndex > 0 || state.shouldStop else {
                     throw TrainingError.emptyTrainingData
@@ -276,6 +319,7 @@ public final class TrainingEngine: @unchecked Sendable {
                         configuration: configuration,
                         globalStep: &globalStep
                     )
+                    state.optimizerStep = globalStep
                 }
 
                 state.logs["loss"] = lossWeight == 0 ? 0 : weightedLoss / Float(lossWeight)

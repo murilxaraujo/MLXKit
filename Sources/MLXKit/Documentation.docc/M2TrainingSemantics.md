@@ -95,9 +95,10 @@ M2 consumes typed asynchronous sequences of already-built batches. It does not
 implement M4 sample sources, transforms, collation, streaming shuffle,
 prefetch, or backpressure. M5 gradient transforms, global-norm clipping,
 sample-aware accumulation, and weighted cross entropy are implemented. M6
-distributed execution remains deferred. MLXKit validates the scalar objective
-contract and its own configuration; MLX continues to define runtime array
-shape, dtype, and device behavior.
+defines versioned persistence artifacts and an epoch-boundary recovery contract
+for checkpoint-capable optimizers; distributed execution remains out of scope.
+MLXKit validates the scalar objective contract and its own configuration; MLX
+continues to define runtime array shape, dtype, and device behavior.
 
 The M5 control ordering, accumulation, weighting, and failure contracts are
 recorded in <doc:M5TrainingControlSemantics>. Implemented M5 controls extend

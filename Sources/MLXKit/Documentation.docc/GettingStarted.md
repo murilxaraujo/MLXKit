@@ -91,14 +91,16 @@ let output = engine.predict(model, input: newData)
 ### Saving and Loading
 
 ```swift
-// Save a checkpoint
-try Checkpointing.save(model: model, epoch: 10, to: checkpointURL)
+// Save model weights
+try Checkpointing.saveWeights(model, to: checkpointURL)
 
 // Load into a new model
 let restored = Classifier()
-let info = try Checkpointing.load(into: restored, from: checkpointURL)
-print("Resumed from epoch \(info.epoch)")
+try Checkpointing.loadWeights(into: restored, from: checkpointURL)
 ```
+
+Weight loading restores parameters only. See <doc:M6PersistenceSemantics> for
+inference metadata and optimizer-aware training recovery.
 
 ### Inspecting Your Model
 

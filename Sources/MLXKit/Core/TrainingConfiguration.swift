@@ -68,6 +68,7 @@ public enum TrainingError: Error, LocalizedError, Equatable {
     case nonFiniteGradient
     case invalidGlobalNormClip(Float)
     case invalidGradientAccumulationSteps(Int)
+    case invalidResumeProgress(completedEpochs: Int, optimizerStep: Int, totalEpochs: Int)
     case gradientTreeKeyMismatch(expected: [String], actual: [String])
     case gradientShapeMismatch(parameter: String, expected: [Int], actual: [Int])
 
@@ -97,6 +98,8 @@ public enum TrainingError: Error, LocalizedError, Equatable {
             "Global gradient-norm clip must be finite and greater than zero; received \(value)."
         case .invalidGradientAccumulationSteps(let value):
             "Gradient accumulation steps must be greater than zero; received \(value)."
+        case .invalidResumeProgress(let completedEpochs, let optimizerStep, let totalEpochs):
+            "Resume progress must be nonnegative and before the requested final epoch; received completedEpochs=\(completedEpochs), optimizerStep=\(optimizerStep), totalEpochs=\(totalEpochs)."
         case .gradientTreeKeyMismatch(let expected, let actual):
             "Gradient transform changed parameter keys; expected \(expected), received \(actual)."
         case .gradientShapeMismatch(let parameter, let expected, let actual):

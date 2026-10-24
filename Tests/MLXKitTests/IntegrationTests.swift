@@ -133,20 +133,24 @@ struct IntegrationGPUTests {
         let trainLoader = try DataLoader(source: trainData, batchSize: 32)
         _ = try await engine.fit(model, configuration: config, data: trainLoader, epochs: 2)
 
-        // Save checkpoint
+        // Save model weights and progress counters; optimizer state is not included.
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("integration_test_\(UUID().uuidString)")
         let url = dir.appendingPathComponent("checkpoint.safetensors")
 
-        try Checkpointing.save(model: model, epoch: 2, step: 100, to: url)
+        try Checkpointing.saveTrainingProgress(
+            model: model,
+            progress: TrainingProgress(completedEpochs: 2, optimizerStep: 100),
+            to: url
+        )
 
         // Load into fresh model
         let model2 = TestClassifier()
         eval(model2)
-        let info = try Checkpointing.load(into: model2, from: url)
+        let info = try Checkpointing.loadTrainingProgress(into: model2, from: url)
 
-        #expect(info.epoch == 2)
-        #expect(info.step == 100)
+        #expect(info.progress.completedEpochs == 2)
+        #expect(info.progress.optimizerStep == 100)
 
         // Predictions should match
         let testInput = MLXRandom.uniform(low: -1.0, high: 1.0, [4, 20])

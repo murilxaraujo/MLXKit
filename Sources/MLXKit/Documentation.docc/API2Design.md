@@ -485,7 +485,7 @@ checkpoint files are portable across versions; M6 owns the artifact policy.
 | Concrete optimizer casts for schedules | Optional `LearningRateControllable` capability | Custom optimizer integrations conform explicitly; unsupported schedule/optimizer combinations fail clearly. |
 | Nonthrowing callback hooks | Synchronous throwing hooks | Add `throws` to callback conformances and handle propagated callback errors. Async training cancellation surfaces as `CancellationError`. |
 | `TerminateOnNaN` callback | Typed `TrainingError.nonFiniteObjective` / `.nonFiniteGradient` | Remove the callback; non-finite training values fail before an optimizer update instead of requesting a stop after a bad update. |
-| `Checkpointing` weight/full-checkpoint calls | No M1 mapping selected | M6 will distinguish weights, inference artifacts, and resumable checkpoints. Do not assume cross-version artifact compatibility. |
+| `Checkpointing` weight/full-checkpoint calls | No M1 mapping selected | M6 distinguishes weight, inference metadata, progress-only, and optimizer-aware recovery artifacts. See <doc:M6PersistenceSemantics>; do not assume untested cross-version compatibility. |
 
 ## Alternatives rejected
 
@@ -533,7 +533,9 @@ The review checks <doc:ProductScope>, <doc:MLXKitAndMLX>,
   examples, migration guidance, and stream cancellation tests.
 - **M5:** gradient transforms, clipping, accumulation, sample weighting, and
   update controls beyond one MLX optimizer update per batch.
-- **M6:** weight/export/resume artifact formats and checkpoint compatibility.
+- **M6 complete:** versioned weight, inference metadata, progress-only, and
+  optimizer-aware epoch-boundary recovery formats, with explicit compatibility
+  and restore-validation contracts; see <doc:M6PersistenceSemantics>.
 - **M7–M8:** runnable example projects and measured local benchmarks.
 - **M9:** final API freeze, complete migration guide, and 2.0 release review.
 

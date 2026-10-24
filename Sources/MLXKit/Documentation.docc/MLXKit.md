@@ -37,6 +37,7 @@ let history = try await engine.fit(
 - <doc:ReferenceWorkloads>
 - <doc:M2TrainingSemantics>
 - <doc:M5TrainingControlSemantics>
+- <doc:M6PersistenceSemantics>
 - <doc:CustomModelState>
 - <doc:TinyDecoderExample>
 - <doc:M1ModelContract>
@@ -112,6 +113,9 @@ let history = try await engine.fit(
 
 - ``Checkpointing``
 - ``CheckpointError``
+- ``TrainingProgress``
+- ``CheckpointableOptimizer``
+- ``OptimizerCheckpointState``
 
 ### Utilities
 

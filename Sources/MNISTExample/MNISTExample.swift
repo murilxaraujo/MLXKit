@@ -122,18 +122,22 @@ struct MNISTExample {
         print("Predictions shape: \(predictions.shape)") // [3, 10]
         print()
 
-        // 9. Checkpoint
+        // 9. Save an inference artifact (weights plus caller-owned metadata).
         let checkpointDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("mlxkit_example")
         let checkpointURL = checkpointDir.appendingPathComponent("model.safetensors")
 
-        try Checkpointing.save(model: model, epoch: 5, step: 40, to: checkpointURL)
-        print("Checkpoint saved to: \(checkpointURL.path(percentEncoded: false))")
+        try Checkpointing.saveInferenceArtifact(
+            model,
+            metadata: ["architecture": "MNISTModel", "classCount": "10"],
+            to: checkpointURL
+        )
+        print("Inference artifact saved to: \(checkpointURL.path(percentEncoded: false))")
 
         let newModel = MNISTModel()
         eval(newModel)
-        let info = try Checkpointing.load(into: newModel, from: checkpointURL)
-        print("Checkpoint loaded: epoch=\(info.epoch), step=\(info.step)")
+        let artifact = try Checkpointing.loadInferenceArtifact(into: newModel, from: checkpointURL)
+        print("Inference artifact loaded: \(artifact.metadata)")
 
         // Cleanup
         try? FileManager.default.removeItem(at: checkpointDir)

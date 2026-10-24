@@ -74,8 +74,8 @@ let metrics = try await engine.evaluate(model, configuration: config, data: test
 let output = engine.predict(model, input: newData)
 
 // 5. Save & load
-try Checkpointing.save(model: model, epoch: 10, to: checkpointURL)
-let info = try Checkpointing.load(into: restoredModel, from: checkpointURL)
+try Checkpointing.saveWeights(model, to: weightsURL)
+try Checkpointing.loadWeights(into: restoredModel, from: weightsURL)
 ```
 
 ## Features
@@ -89,7 +89,7 @@ let info = try Checkpointing.load(into: restoredModel, from: checkpointURL)
 | **Callbacks** | EarlyStopping, ModelCheckpoint, ProgressReporter, Lambda |
 | **Data** | Typed indexed/async sample sources, composable transforms, seeded shuffle, batching, and bounded prefetch |
 | **LR Schedules** | CosineDecay, StepDecay, ExponentialDecay, composable Warmup |
-| **Serialization** | Weight save/load and full checkpoint (model + epoch + metadata) via safetensors |
+| **Serialization** | Versioned weight and inference artifacts; epoch-boundary recovery when an optimizer implements `CheckpointableOptimizer` |
 | **Utilities** | `model.printSummary()` with tabular param counts and memory estimates |
 
 ## Running Tests
@@ -113,6 +113,7 @@ Full API documentation is available at **[murilxaraujo.github.io/MLXKit](https:/
 See the [data pipeline guide](Sources/MLXKit/Documentation.docc/DataPipeline.md) for typed in-memory and streaming batches, shuffle/prefetch semantics, and migration guidance. Run `swift run DataPipelineExample` for a local example.
 See the [M2 training semantics](Sources/MLXKit/Documentation.docc/M2TrainingSemantics.md) for scalar objectives, aggregation, schedules, callback lifecycle, cancellation, and failure behavior.
 See the [M5 training-control semantics](Sources/MLXKit/Documentation.docc/M5TrainingControlSemantics.md) for ordered gradient transforms, clipping, sample-aware accumulation, weighted cross entropy, and the `TrainingStep` boundary. `MNISTExample` demonstrates standard-path controls; `TinyDecoderExample` demonstrates a custom loss-computation step. Both use local data.
+See the [M6 persistence semantics](Sources/MLXKit/Documentation.docc/M6PersistenceSemantics.md) for weight-only artifacts, inference metadata, and the explicit optimizer-state requirements for epoch-boundary recovery.
 Read the [MLXKit 2.0 product scope](Sources/MLXKit/Documentation.docc/ProductScope.md) for its target users, product goals, non-goals, and roadmap success criteria.
 See the [integrated MLXKit 2.0 API design](Sources/MLXKit/Documentation.docc/API2Design.md) for the full API direction and the data pipeline's public contracts.
 See the [platform support matrix](Sources/MLXKit/Documentation.docc/PlatformSupport.md), [compatibility policy](Sources/MLXKit/Documentation.docc/CompatibilityPolicy.md), [MLX responsibility boundary](Sources/MLXKit/Documentation.docc/MLXKitAndMLX.md), and [reference workload plan](Sources/MLXKit/Documentation.docc/ReferenceWorkloads.md) for the M0 product contract.
