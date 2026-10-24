@@ -30,6 +30,7 @@ let history = try await engine.fit(
 
 ### Essentials
 
+- <doc:ProductScope>
 - <doc:GettingStarted>
 - <doc:Architecture>
 
