@@ -20,7 +20,24 @@ jobs:
       - name: Select Xcode
         run: |
           sudo xcode-select -s /Applications/Xcode_27.0.app/Contents/Developer
+
+      - name: Record validation environment
+        run: |
+          sw_vers
+          os_version="$(sw_vers -productVersion)"
+          architecture="$(uname -m)"
+          echo "Architecture: ${architecture}"
+          xcodebuild -version
           swift --version
+          grep -A 6 '"identity" : "mlx-swift"' Package.resolved
+          case "${os_version}" in
+            27.*) ;;
+            *) echo "CI support job requires macOS 27.x; found ${os_version}" >&2; exit 1 ;;
+          esac
+          if [ "${architecture}" != "arm64" ]; then
+            echo "CI support job requires Apple silicon (arm64); found ${architecture}" >&2
+            exit 1
+          fi
 
       - name: Build
         run: swift build
