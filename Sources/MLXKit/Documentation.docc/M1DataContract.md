@@ -163,8 +163,15 @@ cardinality, and the streaming read bound.
   them; training must not require `totalBatches` to be known.
 
 M4 issue #23 defines batching/shuffle configuration errors and source ordering.
-Bounded prefetch, cancellation cleanup, and backpressure details are implemented
-in the separate M4 prefetch issue.
+`prefetched(bufferSize:)` preserves order and limits unconsumed elements to the
+configured capacity. The producer reserves a buffer slot before requesting the
+next upstream element; a consumer request for another element releases the slot
+held by the previously delivered element. This applies backpressure without
+timing-dependent polling. Exhaustion finishes normally, and upstream errors
+propagate once. Cancellation or early iterator destruction cancels the
+pipeline-owned producer task and closes its demand channel. Prompt cancellation
+of an in-flight source read depends on that source cooperating with task
+cancellation.
 
 ## Alternatives and rationale
 
