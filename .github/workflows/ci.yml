@@ -45,6 +45,12 @@ jobs:
       - name: Unit Tests
         run: swift test
 
+      - name: Build DocC Documentation
+        run: make docs
+
+      - name: M7 Example Smoke Runs
+        run: make smoke-examples
+
       - name: GPU Tests
         run: |
           xcodebuild test \

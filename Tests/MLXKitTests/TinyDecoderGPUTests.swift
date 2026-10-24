@@ -31,6 +31,26 @@ struct TinyDecoderGPUTests {
         #expect(originalLogits[0, 1].allClose(changedLogits[0, 1], rtol: 1e-5, atol: 1e-6).item(Bool.self))
     }
 
+    @Test func logitsPreserveBatchSequenceAndVocabularyAxes() {
+        seed(24)
+        let model = TinyDecoder(
+            vocabularySize: 11,
+            width: 8,
+            headCount: 2,
+            maximumSequenceLength: 5
+        )
+        let tokens = MLXArray([
+            [Int32(0), 1, 2, 3, 4],
+            [Int32(5), 6, 7, 8, 9],
+        ])
+
+        let logits = model(tokens)
+        eval(logits)
+
+        #expect(logits.shape == [2, 5, 11])
+        #expect(isFinite(logits).all().item(Bool.self))
+    }
+
     @Test func objectiveGradientsAndTrainingUpdateMatchDirectMLX() async throws {
         seed(23)
         let trainingModel = makeModel()

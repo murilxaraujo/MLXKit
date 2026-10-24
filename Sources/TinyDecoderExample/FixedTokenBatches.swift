@@ -2,11 +2,11 @@ import MLX
 import MLXKit
 
 /// Re-iterable, deterministic M2 batches built from a local token fixture.
-struct FixedTokenBatches: AsyncSequence {
+struct FixedTokenBatches: AsyncSequence, @unchecked Sendable {
     typealias Element = Batch<MLXArray, MLXArray>
     typealias Failure = Never
 
-    private let batches: [Element]
+    let batches: [Element]
 
     init(tokenRows: [[Int32]], sequenceLength: Int, batchSize: Int) {
         precondition(sequenceLength > 0)

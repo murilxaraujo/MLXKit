@@ -124,18 +124,19 @@ To build locally:
 make docs
 ```
 
-## Example
+## Examples
 
-A standalone MNIST-style training example is included:
+See the [examples index](Examples/README.md) for the classifier, contrastive
+embedding, and tiny causal decoder projects, including prerequisites, run
+commands, smoke runs, local-data expectations, and capability boundaries. The
+`DataPipelineExample` demonstrates indexed in-memory data and a generated
+unknown-length stream with bounded shuffle and prefetch:
 
 ```bash
-swift run MNISTExample
 swift run DataPipelineExample
 ```
 
-`DataPipelineExample` runs both an indexed in-memory workflow and a generated
-unknown-length stream with bounded shuffle and prefetch. Both examples use
-local synthetic data and do not require network access.
+The examples use local or generated data and do not download datasets.
 
 ## License
 

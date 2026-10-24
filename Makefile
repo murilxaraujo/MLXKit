@@ -1,4 +1,4 @@
-.PHONY: build test test-gpu test-all clean docs docs-preview run-example run-tiny-decoder run-data-pipeline
+.PHONY: build test test-gpu test-all smoke-examples clean docs docs-preview run-example run-contrastive-embedding run-tiny-decoder run-data-pipeline
 
 # Build the library
 build:
@@ -21,6 +21,12 @@ test-gpu:
 # Run all tests (unit via SPM + GPU via xcodebuild)
 test-all: test test-gpu
 
+# Bounded, deterministic local-data smoke runs for the M7 example portfolio.
+smoke-examples:
+	swift run MNISTExample --smoke
+	swift run ContrastiveEmbeddingExample --smoke
+	swift run TinyDecoderExample --smoke
+
 # Clean build artifacts
 clean:
 	swift package clean
@@ -36,6 +42,10 @@ docs-preview:
 # Run the MNIST example
 run-example:
 	swift run MNISTExample
+
+# Run the deterministic paired-view contrastive embedding example
+run-contrastive-embedding:
+	swift run ContrastiveEmbeddingExample
 
 # Run the deterministic custom tiny-decoder example
 run-tiny-decoder:
