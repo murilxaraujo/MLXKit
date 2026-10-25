@@ -1,8 +1,12 @@
-.PHONY: build test test-gpu test-all smoke-examples clean docs docs-preview run-example run-contrastive-embedding run-tiny-decoder run-data-pipeline
+.PHONY: build build-release test test-gpu test-all smoke-examples release-check clean docs docs-preview run-example run-contrastive-embedding run-tiny-decoder run-data-pipeline
 
 # Build the library
 build:
 	swift build
+
+# Build optimized products as a release-candidate readiness check.
+build-release:
+	swift build -c release
 
 # Run unit tests (no GPU required, works in CI and on any Mac)
 test:
@@ -10,7 +14,7 @@ test:
 
 # Run GPU tests only (requires Apple Silicon + Metal + Xcode)
 test-gpu:
-	xcodebuild test \
+	set -o pipefail; xcodebuild test \
 		-scheme MLXKit-Package \
 		-destination 'platform=macOS' \
 		-only-testing:MLXKitTests \
@@ -20,6 +24,16 @@ test-gpu:
 
 # Run all tests (unit via SPM + GPU via xcodebuild)
 test-all: test test-gpu
+
+# Full release-readiness gate. Requires Apple silicon, Metal, and Xcode for GPU tests.
+# Keep the subcommands sequential so SwiftPM does not concurrently mutate .build.
+release-check:
+	$(MAKE) clean
+	$(MAKE) build-release
+	$(MAKE) test
+	$(MAKE) docs
+	$(MAKE) smoke-examples
+	$(MAKE) test-gpu
 
 # Bounded, deterministic local-data smoke runs for the M7 example portfolio.
 smoke-examples:
