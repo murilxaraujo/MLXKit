@@ -117,6 +117,7 @@ See the [M6 persistence semantics](Sources/MLXKit/Documentation.docc/M6Persisten
 Read the [MLXKit 2.0 product scope](Sources/MLXKit/Documentation.docc/ProductScope.md) for its target users, product goals, non-goals, and roadmap success criteria.
 See the [integrated MLXKit 2.0 API design](Sources/MLXKit/Documentation.docc/API2Design.md) for the full API direction and the data pipeline's public contracts.
 See the [platform support matrix](Sources/MLXKit/Documentation.docc/PlatformSupport.md), [compatibility policy](Sources/MLXKit/Documentation.docc/CompatibilityPolicy.md), [MLX responsibility boundary](Sources/MLXKit/Documentation.docc/MLXKitAndMLX.md), and [reference workload plan](Sources/MLXKit/Documentation.docc/ReferenceWorkloads.md) for the M0 product contract.
+See the [1.x-to-2.0 migration guide](Sources/MLXKit/Documentation.docc/MigrationGuide.md) and [release-readiness checklist](Sources/MLXKit/Documentation.docc/ReleaseReadiness.md) for public API migration, release checks, and current release gates.
 
 To build locally:
 

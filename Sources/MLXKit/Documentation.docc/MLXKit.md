@@ -34,6 +34,8 @@ let history = try await engine.fit(
 - <doc:MLXKitAndMLX>
 - <doc:PlatformSupport>
 - <doc:CompatibilityPolicy>
+- <doc:MigrationGuide>
+- <doc:ReleaseReadiness>
 - <doc:ReferenceWorkloads>
 - <doc:M2TrainingSemantics>
 - <doc:M5TrainingControlSemantics>
@@ -47,6 +49,10 @@ let history = try await engine.fit(
 - <doc:DataPipeline>
 - <doc:GettingStarted>
 - <doc:Architecture>
+
+## See Also
+
+- [Runnable examples index](https://github.com/murilxaraujo/MLXKit/blob/main/Examples/README.md)
 
 ### Core Training
 
