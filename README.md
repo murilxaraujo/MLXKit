@@ -139,6 +139,12 @@ make run-data-pipeline
 
 The examples use local or generated data and do not download datasets.
 
+## Benchmarks
+
+See the [benchmarking plan](Benchmarking/README.md) for the planned paired
+reference-framework and MLXKit implementations. Dataset and reference-framework
+choices are pending; no benchmark results are published yet.
+
 ## License
 
 MIT

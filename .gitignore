@@ -1,5 +1,8 @@
 .DS_Store
 /.build
+/Examples/Derived
+/Examples/MLXKitExamples.xcodeproj
+/Examples/MLXKitExamples.xcworkspace
 /Packages
 xcuserdata/
 DerivedData/

@@ -51,14 +51,20 @@ jobs:
       - name: Build DocC Documentation
         run: make docs
 
+      - name: Install Tuist
+        run: brew install tuist
+
       - name: M7 Example Smoke Runs
         run: make smoke-examples
 
       - name: GPU Tests
         run: |
           xcodebuild test \
-            -scheme MLXKit-Package \
+            -scheme MLXKit \
             -destination 'platform=macOS' \
             -only-testing:MLXKitTests \
             OTHER_SWIFT_FLAGS='-DMLX_GPU_TESTS' \
             -parallel-testing-enabled NO
+
+      - name: Example GPU Tests
+        run: make test-examples-gpu
