@@ -1,12 +1,17 @@
-# MNIST CNN reference implementation
+# MNIST CNN — PyTorch reference
 
-Place the selected PyTorch or TensorFlow/Keras reference code in this directory.
-Selection is pending; do not claim benchmark parity until the configuration is
-matched with [`../mlxkit/README.md`](../mlxkit/README.md).
+The executable is [`train.py`](train.py). Its Conda environment pins Python
+3.11, NumPy 1.26.4, and PyTorch 2.6.0 in [`environment.yml`](environment.yml).
+PyTorch's MPS backend is selected when available; the report records the actual
+device and falls back to CPU when necessary.
 
-- Framework and exact version: **TBD**
-- Upstream repository/source and revision: **TBD**
-- Dataset source and preprocessing: **TBD**
-- Device/backend and precision: **TBD**
-- Installation and run commands: **TBD**
-- Modifications from upstream and reason: **TBD**
+From the repository root:
+
+```sh
+conda env create -f Benchmarking/mnist-cnn/reference/environment.yml
+Benchmarking/mnist-cnn/scripts/run-reference.sh
+```
+
+The model follows the supplied notebook's convolution/pooling/dropout layout.
+See the workload README for the canonical MNIST split and other explicit
+adaptations made for reproducible pairing.

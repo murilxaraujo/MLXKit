@@ -142,9 +142,10 @@ The examples use local or generated data and do not download datasets.
 ## Benchmarks
 
 See the [benchmarking plan](Benchmarking/README.md) for the paired workload
-suite. The [MNIST MLP](Benchmarking/mnist-mlp/README.md) now has independent
-TensorFlow/Keras and MLXKit runners; the remaining workloads are scaffolding.
-No benchmark results are published as project claims.
+suite. The [MNIST MLP](Benchmarking/mnist-mlp/README.md) and
+[MNIST CNN](Benchmarking/mnist-cnn/README.md) have paired runners; the remaining
+workloads are scaffolding. No benchmark results are published as project
+claims.
 
 ## License
 

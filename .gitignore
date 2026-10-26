@@ -12,5 +12,7 @@ DerivedData/
 /Benchmarking/mnist-mlp/data/
 /Benchmarking/mnist-mlp/results/
 /Benchmarking/mnist-mlp/.build/
-/Benchmarking/mnist-mlp/**/__pycache__/
-/Benchmarking/mnist-mlp/**/*.py[cod]
+/Benchmarking/mnist-cnn/results/
+/Benchmarking/mnist-cnn/.build/
+/Benchmarking/**/__pycache__/
+/Benchmarking/**/*.py[cod]

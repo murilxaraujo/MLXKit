@@ -1,0 +1,9 @@
+name: mlxkit-mnist-cnn
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy=1.26.4
+  - pip
+  - pip:
+      - torch==2.6.0

@@ -1,12 +1,17 @@
-# MNIST CNN with MLXKit
+# MNIST CNN — MLXKit implementation
 
-Place the MLXKit model, training entry point, and any workload-specific data
-adapter in this directory. Dataset selection and the paired reference
-configuration are pending.
+The executable is [`Sources/MNISTCNNBenchmark.swift`](Sources/MNISTCNNBenchmark.swift),
+registered as `MNISTCNNBenchmark` in the root `Package.swift`. It uses MLXKit's
+`TrainingEngine`, `DataLoader`, sparse `CrossEntropyLoss`, and accuracy metric.
 
-- MLXKit and MLX Swift revisions: **TBD**
-- Model definition and parameter count: **TBD**
-- Dataset source and preprocessing: **TBD**
-- Device/backend, dtype, optimizer, and batch size: **TBD**
-- Installation and run commands: **TBD**
-- Parity checks and results: **TBD**
+From the repository root:
+
+```sh
+Benchmarking/mnist-cnn/scripts/run-mlxkit.sh
+```
+
+The model uses MLX's NHWC convolution convention. Shared PyTorch OIHW
+initialization files are transposed to MLX OHWI layout on load. It consumes the
+same prepared dataset bytes and seeded weights as the reference. The runner
+records MLX's default device, MLX active-memory peak, process RSS, epoch metrics,
+step latency, throughput, and test metrics.
