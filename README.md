@@ -141,9 +141,10 @@ The examples use local or generated data and do not download datasets.
 
 ## Benchmarks
 
-See the [benchmarking plan](Benchmarking/README.md) for the planned paired
-reference-framework and MLXKit implementations. Dataset and reference-framework
-choices are pending; no benchmark results are published yet.
+See the [benchmarking plan](Benchmarking/README.md) for the paired workload
+suite. The [MNIST MLP](Benchmarking/mnist-mlp/README.md) now has independent
+TensorFlow/Keras and MLXKit runners; the remaining workloads are scaffolding.
+No benchmark results are published as project claims.
 
 ## License
 

@@ -1,14 +1,15 @@
 # MLXKit benchmarks
 
-This directory will contain paired implementations of standard neural-network
+This directory contains paired implementations of standard neural-network
 workloads: a reference implementation in PyTorch or TensorFlow/Keras and the
 same model trained with MLXKit. The goal is to demonstrate how these
 architectures are expressed with MLXKit and to report comparable quality and
 performance measurements.
 
-This is scaffolding only. Dataset sources, exact model configurations,
-reference-framework versions, run commands, and results have not yet been
-selected. No benchmark result or performance claim is implied by this plan.
+The [MNIST MLP](mnist-mlp/README.md) is implemented with independent
+TensorFlow/Keras and MLXKit runners. Other workloads remain scaffolding while
+their dataset sources, exact configurations, and reference-framework versions
+are selected. No benchmark result or performance claim is implied by this plan.
 
 ## Workload order
 
@@ -77,11 +78,10 @@ percentage does not hide the scale of the quality change.
 
 ## Run status
 
-No benchmark commands are provided yet. These workloads require decisions about
-datasets and reference implementations before a fair executable benchmark can
-be built. Performance runs are intended for a local Apple-silicon machine, not
-routine CI. Keep any future bounded correctness smoke checks separate from
-timed benchmark results.
+The MNIST MLP commands and setup are documented in its workload README. The
+other workloads do not have runnable benchmark commands yet. Performance runs
+are intended for a local Apple-silicon machine, not routine CI. Keep any future
+bounded correctness smoke checks separate from timed benchmark results.
 
 ## Results record template
 

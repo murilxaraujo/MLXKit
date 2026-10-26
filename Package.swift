@@ -35,6 +35,18 @@ let package = Package(
                 .product(name: "MLXOptimizers", package: "mlx-swift"),
             ]
         ),
+        .executableTarget(
+            name: "MNISTMLPBenchmark",
+            dependencies: [
+                "MLXKit",
+                .product(name: "MLX", package: "mlx-swift"),
+                .product(name: "MLXNN", package: "mlx-swift"),
+                .product(name: "MLXOptimizers", package: "mlx-swift"),
+            ],
+            path: "Benchmarking/mnist-mlp/mlxkit",
+            exclude: ["README.md"],
+            sources: ["Sources/MNISTMLPBenchmark.swift"]
+        ),
         .testTarget(
             name: "MLXKitTests",
             dependencies: ["MLXKit"],

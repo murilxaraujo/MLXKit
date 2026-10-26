@@ -1,0 +1,11 @@
+name: mlxkit-mnist-mlp
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy=1.26.4
+  - pip
+  - pip:
+      - tensorflow==2.16.2
+      - tensorflow-metal==1.1.0
+      - keras==3.3.3
