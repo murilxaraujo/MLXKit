@@ -110,7 +110,7 @@ See the [Makefile](Makefile) for all available commands.
 ## Documentation
 
 Full API documentation is available at **[murilxaraujo.github.io/MLXKit](https://murilxaraujo.github.io/MLXKit/documentation/mlxkit)**.
-See the [data pipeline guide](Sources/MLXKit/Documentation.docc/DataPipeline.md) for typed in-memory and streaming batches, shuffle/prefetch semantics, and migration guidance. Run `swift run DataPipelineExample` for a local example.
+See the [data pipeline guide](Sources/MLXKit/Documentation.docc/DataPipeline.md) for typed in-memory and streaming batches, shuffle/prefetch semantics, and migration guidance. Run `make run-data-pipeline` for a local example.
 See the [M2 training semantics](Sources/MLXKit/Documentation.docc/M2TrainingSemantics.md) for scalar objectives, aggregation, schedules, callback lifecycle, cancellation, and failure behavior.
 See the [M5 training-control semantics](Sources/MLXKit/Documentation.docc/M5TrainingControlSemantics.md) for ordered gradient transforms, clipping, sample-aware accumulation, weighted cross entropy, and the `TrainingStep` boundary. `MNISTExample` demonstrates standard-path controls; `TinyDecoderExample` demonstrates a custom loss-computation step. Both use local data.
 See the [M6 persistence semantics](Sources/MLXKit/Documentation.docc/M6PersistenceSemantics.md) for weight-only artifacts, inference metadata, and the explicit optimizer-state requirements for epoch-boundary recovery.
@@ -134,7 +134,7 @@ commands, smoke runs, local-data expectations, and capability boundaries. The
 unknown-length stream with bounded shuffle and prefetch:
 
 ```bash
-swift run DataPipelineExample
+make run-data-pipeline
 ```
 
 The examples use local or generated data and do not download datasets.

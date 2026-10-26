@@ -1,4 +1,4 @@
-.PHONY: build build-release test test-gpu test-all smoke-examples release-check clean docs docs-preview run-example run-contrastive-embedding run-tiny-decoder run-data-pipeline
+.PHONY: build build-release test test-gpu test-examples-gpu test-all smoke-examples examples-install examples-generate release-check clean docs docs-preview run-example run-contrastive-embedding run-tiny-decoder run-data-pipeline
 
 # Build the library
 build:
@@ -15,15 +15,15 @@ test:
 # Run GPU tests only (requires Apple Silicon + Metal + Xcode)
 test-gpu:
 	set -o pipefail; xcodebuild test \
-		-scheme MLXKit-Package \
+		-scheme MLXKit \
 		-destination 'platform=macOS' \
 		-only-testing:MLXKitTests \
 		OTHER_SWIFT_FLAGS='-DMLX_GPU_TESTS' \
 		-parallel-testing-enabled NO \
 		2>&1 | tail -30
 
-# Run all tests (unit via SPM + GPU via xcodebuild)
-test-all: test test-gpu
+# Run all tests (SPM unit tests plus library and example GPU suites)
+test-all: test test-gpu test-examples-gpu
 
 # Full release-readiness gate. Requires Apple silicon, Metal, and Xcode for GPU tests.
 # Keep the subcommands sequential so SwiftPM does not concurrently mutate .build.
@@ -34,12 +34,29 @@ release-check:
 	$(MAKE) docs
 	$(MAKE) smoke-examples
 	$(MAKE) test-gpu
+	$(MAKE) test-examples-gpu
 
-# Bounded, deterministic local-data smoke runs for the M7 example portfolio.
-smoke-examples:
-	swift run MNISTExample --smoke
-	swift run ContrastiveEmbeddingExample --smoke
-	swift run TinyDecoderExample --smoke
+# Resolve the standalone Tuist project's dependencies and generate its Xcode project.
+examples-install:
+	tuist install --path Examples
+
+examples-generate: examples-install
+	tuist generate --path Examples --no-open
+
+# Bounded, deterministic local-data smoke runs for the example portfolio.
+smoke-examples: examples-generate
+	tuist run --path Examples MNISTExample --smoke
+	tuist run --path Examples ContrastiveEmbeddingExample --smoke
+	tuist run --path Examples TinyDecoder --smoke
+
+# GPU-dependent example implementation tests (requires Apple Silicon + Metal + Xcode).
+test-examples-gpu: examples-generate
+	set -o pipefail; xcodebuild test \
+		-project Examples/MLXKitExamples.xcodeproj \
+		-scheme TinyDecoder \
+		-destination 'platform=macOS' \
+		-parallel-testing-enabled NO \
+		2>&1 | tail -30
 
 # Clean build artifacts
 clean:
@@ -54,17 +71,17 @@ docs-preview:
 	swift package --disable-sandbox preview-documentation --target MLXKit
 
 # Run the MNIST example
-run-example:
-	swift run MNISTExample
+run-example: examples-generate
+	tuist run --path Examples MNISTExample
 
 # Run the deterministic paired-view contrastive embedding example
-run-contrastive-embedding:
-	swift run ContrastiveEmbeddingExample
+run-contrastive-embedding: examples-generate
+	tuist run --path Examples ContrastiveEmbeddingExample
 
 # Run the deterministic custom tiny-decoder example
-run-tiny-decoder:
-	swift run TinyDecoderExample
+run-tiny-decoder: examples-generate
+	tuist run --path Examples TinyDecoder
 
 # Run the local in-memory and streaming data-pipeline example
-run-data-pipeline:
-	swift run DataPipelineExample
+run-data-pipeline: examples-generate
+	tuist run --path Examples DataPipelineExample

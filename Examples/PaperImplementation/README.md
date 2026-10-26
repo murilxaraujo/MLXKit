@@ -7,13 +7,12 @@ The intent is a runnable, scoped implementation study—not an automated
 reproduction platform and not a guarantee that a paper's claims have been
 reproduced.
 
-## Start from the root package
+## Start from the examples project
 
-Keep examples in the existing Swift package unless a real dependency or release
-boundary requires another package. Add an executable target/product to the root
-`Package.swift` only when the example needs a command-line executable. Use the
-existing MLXKit and MLX package products. Do not add a nested package graph just
-to make the example look independent.
+Add the example as a target in `Examples/Project.swift` and depend on the local
+root `MLXKit` package product. Keep example-only model code, command-line
+arguments, and supporting tests under `Examples/`; do not add example executables
+or implementation-specific targets to the root `Package.swift`.
 
 Implement model-specific layers and differentiable operations with public MLX
 APIs. Use MLXKit's public `TrainableModel`, `Objective`, typed `Batch`,
@@ -47,17 +46,18 @@ from tiny fixtures. State what each check demonstrates and what it does not.
 
 ## Suggested verification sequence
 
-From the repository root, replace the placeholders with the new product and
-test names:
+From the repository root, replace the placeholder with the new Tuist scheme:
 
 ```sh
-swift build --product <ExampleProduct>
-swift run <ExampleProduct> --smoke
-swift test --filter <RelevantTestName>
+make examples-generate
+xcodebuild build -workspace Examples/MLXKitExamples.xcworkspace -scheme <ExampleScheme>
+tuist run --path Examples <ExampleScheme> --smoke
+make test-examples-gpu
 ```
 
 If the test requires Apple silicon/Metal, mark it explicitly and include the
-relevant command in the hardware-gated validation record, such as `make test-gpu`.
+relevant command in the hardware-gated validation record, such as
+`make test-examples-gpu`.
 The smoke mode should be deterministic, bounded, and use local data.
 It should check more than process startup when the workload has meaningful
 correctness invariants.

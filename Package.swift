@@ -8,6 +8,7 @@ let enableGPUTests = ProcessInfo.processInfo.environment["MLX_GPU_TESTS"] != nil
 
 import Foundation
 
+// Executable examples live in the standalone Tuist project under Examples/.
 let package = Package(
     name: "MLXKit",
     platforms: [
@@ -17,22 +18,6 @@ let package = Package(
         .library(
             name: "MLXKit",
             targets: ["MLXKit"]
-        ),
-        .executable(
-            name: "MNISTExample",
-            targets: ["MNISTExample"]
-        ),
-        .executable(
-            name: "ContrastiveEmbeddingExample",
-            targets: ["ContrastiveEmbeddingExample"]
-        ),
-        .executable(
-            name: "TinyDecoderExample",
-            targets: ["TinyDecoderExample"]
-        ),
-        .executable(
-            name: "DataPipelineExample",
-            targets: ["DataPipelineExample"]
         ),
     ],
     dependencies: [
@@ -50,38 +35,9 @@ let package = Package(
                 .product(name: "MLXOptimizers", package: "mlx-swift"),
             ]
         ),
-        .executableTarget(
-            name: "MNISTExample",
-            dependencies: ["MLXKit"]
-        ),
-        .executableTarget(
-            name: "ContrastiveEmbeddingExample",
-            dependencies: ["MLXKit"]
-        ),
-        .target(
-            name: "TinyDecoderCore",
-            dependencies: [
-                "MLXKit",
-                .product(name: "MLX", package: "mlx-swift"),
-                .product(name: "MLXNN", package: "mlx-swift"),
-            ]
-        ),
-        .executableTarget(
-            name: "TinyDecoderExample",
-            dependencies: ["MLXKit", "TinyDecoderCore"]
-        ),
-        .executableTarget(
-            name: "DataPipelineExample",
-            dependencies: [
-                "MLXKit",
-                .product(name: "MLX", package: "mlx-swift"),
-                .product(name: "MLXNN", package: "mlx-swift"),
-                .product(name: "MLXOptimizers", package: "mlx-swift"),
-            ]
-        ),
         .testTarget(
             name: "MLXKitTests",
-            dependencies: ["MLXKit", "TinyDecoderCore"],
+            dependencies: ["MLXKit"],
             swiftSettings: enableGPUTests ? [.define("MLX_GPU_TESTS")] : []
         ),
     ]

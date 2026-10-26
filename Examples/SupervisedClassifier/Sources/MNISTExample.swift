@@ -4,13 +4,13 @@
 // data. It is deliberately learnable and does not download or claim to use MNIST.
 
 import Foundation
+import ArgumentParser
 import MLX
 import MLXNN
 import MLXOptimizers
 import MLXKit
 
 private enum ClassifierExampleError: Error, LocalizedError {
-    case invalidArguments(String)
     case nonFiniteMetric(String, Float)
     case validationDidNotImprove(initial: Float, final: Float)
     case validationAccuracyTooLow(Float)
@@ -19,7 +19,6 @@ private enum ClassifierExampleError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidArguments(let message): message
         case .nonFiniteMetric(let name, let value):
             "Expected a finite \(name), received \(value)."
         case .validationDidNotImprove(let initial, let final):
@@ -34,34 +33,13 @@ private enum ClassifierExampleError: Error, LocalizedError {
     }
 }
 
-private struct RunOptions {
-    let epochs: Int
-    let samplesPerClass: Int
-    let validationSamplesPerClass: Int
-    let smoke: Bool
+struct RunOptions: ParsableArguments {
+    @Flag(help: "Run the smaller deterministic fixture for CI and quick checks.")
+    var smoke = false
 
-    static func parse(_ arguments: [String]) throws -> RunOptions {
-        guard arguments.allSatisfy({ $0 == "--smoke" || $0 == "--help" }) else {
-            let invalid = arguments.first { $0 != "--smoke" && $0 != "--help" }!
-            throw ClassifierExampleError.invalidArguments(
-                "Unknown argument '\(invalid)'. Run with --help for usage."
-            )
-        }
-
-        if arguments.contains("--help") {
-            print("Usage: swift run MNISTExample [--smoke] [--help]")
-            print("  --smoke  Run the smaller deterministic fixture for CI and quick checks.")
-            exit(EXIT_SUCCESS)
-        }
-
-        let smoke = arguments.contains("--smoke")
-        return RunOptions(
-            epochs: smoke ? 8 : 12,
-            samplesPerClass: smoke ? 24 : 40,
-            validationSamplesPerClass: smoke ? 8 : 12,
-            smoke: smoke
-        )
-    }
+    var epochs: Int { smoke ? 8 : 12 }
+    var samplesPerClass: Int { smoke ? 24 : 40 }
+    var validationSamplesPerClass: Int { smoke ? 8 : 12 }
 }
 
 // MARK: - Model
@@ -147,9 +125,14 @@ private func requireFinite(_ metrics: [String: Float]) throws {
 // MARK: - Run
 
 @main
-struct MNISTExample {
-    static func main() async throws {
-        let options = try RunOptions.parse(Array(CommandLine.arguments.dropFirst()))
+struct MNISTExample: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Train and evaluate a deterministic synthetic classifier."
+    )
+
+    @OptionGroup var options: RunOptions
+
+    mutating func run() async throws {
         seed(42)
 
         let mode = options.smoke ? "Smoke" : "Instructional"
@@ -220,7 +203,7 @@ struct MNISTExample {
 
         print(String(format: "Validation: loss %.4f → %.4f, accuracy %.1f%%",
                      initialLoss, finalLoss, finalAccuracy * 100))
-        print("Recorded \(history.epochs.count) epochs; all epoch metrics are finite: \(try historyAreFinite(history))")
+        print("Recorded \(history.epochs.count) epochs; all epoch metrics are finite: \(try Self.historyAreFinite(history))")
 
         let exampleInputs = validationData.features[0..<min(8, validationData.count)]
         let predictions = engine.predict(model, input: exampleInputs)
@@ -230,7 +213,7 @@ struct MNISTExample {
         }
         print("Prediction logits shape: \(predictions.shape)")
 
-        try verifyInferenceArtifact(
+        try Self.verifyInferenceArtifact(
             model: model,
             inputs: exampleInputs,
             expectedPredictions: predictions

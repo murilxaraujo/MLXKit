@@ -7,7 +7,7 @@
 
 - **Paper component/result in scope:** [one precise component or claim]
 - **Not in scope:** [larger results or systems this project does not reproduce]
-- **Example product/target:** [SwiftPM product and target, or why no executable
+- **Example product/target:** [Tuist command-line target, or why no executable
   is needed]
 - **Capability boundary:** [what a successful run demonstrates and does not]
 
@@ -25,10 +25,10 @@
 - **Supported baseline:** [OS, hardware, Xcode/Swift, MLX version]
 - **Network/data requirements:** [resolve dependencies separately; say whether
   any run-time data or downloads are required]
-- **Build:** `swift build --product <ExampleProduct>`
-- **Full/local run:** `swift run <ExampleProduct>`
-- **Smoke:** `swift run <ExampleProduct> --smoke`
-- **Tests:** `swift test --filter <RelevantTestName>`
+- **Build:** `xcodebuild build -workspace Examples/MLXKitExamples.xcworkspace -scheme <ExampleScheme>`
+- **Full/local run:** `tuist run --path Examples <ExampleTarget>`
+- **Smoke:** `tuist run --path Examples <ExampleTarget> --smoke`
+- **Tests:** `make test-examples-gpu` or a focused `xcodebuild test` invocation
 - **Hardware-gated tests, if any:** [command and required hardware]
 
 ## Architecture and tensor shapes
@@ -89,8 +89,8 @@ and reduction. Then record:
 
 ## Reproduction steps and results
 
-List exact commands from a clean checkout after SwiftPM dependencies have been
-resolved. Record OS, hardware, Swift/Xcode/MLX versions, smoke/full mode, seed,
+List exact commands from a clean checkout after `make examples-generate` has
+resolved the Tuist and Swift package dependencies. Record OS, hardware, Swift/Xcode/MLX versions, smoke/full mode, seed,
 and observed results. Distinguish required results from informational logs.
 
 | Check | Command | Result | Notes/skips |

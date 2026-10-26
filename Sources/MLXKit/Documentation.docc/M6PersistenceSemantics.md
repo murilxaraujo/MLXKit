@@ -118,6 +118,6 @@ metadata field can describe external assets; it does not package those assets.
 ## Validation record
 
 On 2026-10-25, `swift test` passed (92 tests), `make test-gpu` passed (188
-tests), and `make docs` completed without DocC warnings. `swift run MNISTExample`
-also completed its inference-artifact save/load path successfully on Apple
-Silicon/Metal.
+tests), and `make docs` completed without DocC warnings. The supervised
+classifier example also completed its inference-artifact save/load path on
+Apple Silicon/Metal.

@@ -1,6 +1,7 @@
 // A deterministic, local example of paired-view contrastive representation learning.
 
 import Foundation
+import ArgumentParser
 import MLX
 import MLXNN
 import MLXOptimizers
@@ -12,7 +13,6 @@ private let contrastiveTemperature: Float = 0.1
 private let trainingBatchSize = 32
 
 private enum EmbeddingExampleError: Error, LocalizedError {
-    case invalidArgument(String)
     case nonFiniteValue(String, Float)
     case validationLossDidNotImprove(initial: Float, final: Float)
     case retrievalDidNotImprove(initial: Float, final: Float)
@@ -23,8 +23,6 @@ private enum EmbeddingExampleError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidArgument(let argument):
-            "Unknown argument '\(argument)'. Use --smoke or --help."
         case .nonFiniteValue(let name, let value):
             "Expected finite \(name), received \(value)."
         case .validationLossDidNotImprove(let initial, let final):
@@ -43,33 +41,13 @@ private enum EmbeddingExampleError: Error, LocalizedError {
     }
 }
 
-private struct RunOptions {
-    let epochs: Int
-    let trainingPairs: Int
-    let validationPairs: Int
-    let smoke: Bool
+struct RunOptions: ParsableArguments {
+    @Flag(help: "Run the smaller deterministic fixture for CI and quick checks.")
+    var smoke = false
 
-    static func parse(_ arguments: [String]) throws -> RunOptions {
-        guard arguments.allSatisfy({ $0 == "--smoke" || $0 == "--help" }) else {
-            throw EmbeddingExampleError.invalidArgument(
-                arguments.first { $0 != "--smoke" && $0 != "--help" }!
-            )
-        }
-
-        if arguments.contains("--help") {
-            print("Usage: swift run ContrastiveEmbeddingExample [--smoke] [--help]")
-            print("  --smoke  Run the smaller deterministic fixture for CI and quick checks.")
-            exit(EXIT_SUCCESS)
-        }
-
-        let smoke = arguments.contains("--smoke")
-        return RunOptions(
-            epochs: smoke ? 30 : 40,
-            trainingPairs: smoke ? 96 : 256,
-            validationPairs: smoke ? 64 : 128,
-            smoke: smoke
-        )
-    }
+    var epochs: Int { smoke ? 30 : 40 }
+    var trainingPairs: Int { smoke ? 96 : 256 }
+    var validationPairs: Int { smoke ? 64 : 128 }
 }
 
 // MARK: - Encoder
@@ -231,9 +209,14 @@ private func requireUnitNorms(_ embeddings: MLXArray) throws {
 // MARK: - Run
 
 @main
-struct ContrastiveEmbeddingExample {
-    static func main() async throws {
-        let options = try RunOptions.parse(Array(CommandLine.arguments.dropFirst()))
+struct ContrastiveEmbeddingExample: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Train and evaluate a deterministic paired-view contrastive encoder."
+    )
+
+    @OptionGroup var options: RunOptions
+
+    mutating func run() async throws {
         seed(42)
         let gradientCheckModel = EmbeddingEncoder()
         seed(42)
@@ -307,12 +290,12 @@ struct ContrastiveEmbeddingExample {
             data: validationLoader,
             trainingStep: contrastiveTrainingStep
         )
-        try validateMetrics(initialValidation)
+        try Self.validateMetrics(initialValidation)
 
         print("Contrastive paired-view embedding example\(options.smoke ? " — smoke" : "")")
         print("input=[batch, 2, 128] embedding=[batch, 2, 64] temperature=\(contrastiveTemperature)")
         print("trainingPairs=\(options.trainingPairs) validationPairs=\(options.validationPairs) epochs=\(options.epochs)")
-        print("Initial validation: loss=\(formatted(initialValidation["loss"])), paired Recall@1=\(formatted(initialValidation["paired_recall_at_1"]))")
+        print("Initial validation: loss=\(Self.formatted(initialValidation["loss"])), paired Recall@1=\(Self.formatted(initialValidation["paired_recall_at_1"]))")
 
         let history = try await engine.fit(
             model,
@@ -330,7 +313,7 @@ struct ContrastiveEmbeddingExample {
             data: validationLoader,
             trainingStep: contrastiveTrainingStep
         )
-        try validateMetrics(finalValidation)
+        try Self.validateMetrics(finalValidation)
 
         for epoch in history.epochs {
             for (name, value) in epoch {
@@ -389,7 +372,7 @@ struct ContrastiveEmbeddingExample {
         }
         try requireUnitNorms(newVectors)
 
-        print("Final validation: loss=\(formatted(finalValidationLoss)), paired Recall@1=\(formatted(recall))")
+        print("Final validation: loss=\(Self.formatted(finalValidationLoss)), paired Recall@1=\(Self.formatted(recall))")
         print("Autodiff: finite, nonzero gradients · optimizer: parameters updated")
         print("Embedding norms: unit length within 1e-4 · new vectors shape: \(newVectors.shape)")
         print("Completed \(history.epochs.count) epochs; random retrieval baseline for batch 32 is 0.03125.")

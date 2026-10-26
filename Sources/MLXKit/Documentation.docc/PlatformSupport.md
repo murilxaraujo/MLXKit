@@ -14,8 +14,9 @@ successful compile alone is not proof that a configuration is supported.
 | MLX Swift | 0.32.3 for the validated dependency resolution | `Package.swift` requires `mlx-swift` from 0.32.3 and `Package.resolved` pins 0.32.3. Other versions permitted by the package's version range are not covered by this validation. |
 | Backend | Metal on Apple silicon for GPU-dependent execution | CI runs GPU-dependent tests through Xcode with `MLX_GPU_TESTS`. The ordinary `swift test` path runs non-GPU-dependent tests; it is not evidence for a separate CPU compute backend. |
 
-The CI workflow performs a build, the non-GPU-dependent test suite, and the
-GPU-dependent test suite on its `xcode-27` runner. Its environment-reporting
+The CI workflow performs a library build, the non-GPU-dependent test suite,
+example smoke runs, and both library and example GPU-dependent test suites on
+its `xcode-27` runner. Its environment-reporting
 step records the OS, architecture, Xcode, Swift, and resolved MLX Swift version.
 Treat a CI run as validation of the exact environment printed in its log, not
 of every environment covered by a broad version range.
@@ -40,13 +41,15 @@ The CI workflow runs these checks on the supported baseline:
 swift build
 swift test
 xcodebuild test \
-  -scheme MLXKit-Package \
+  -scheme MLXKit \
   -destination 'platform=macOS' \
   -only-testing:MLXKitTests \
   OTHER_SWIFT_FLAGS='-DMLX_GPU_TESTS' \
   -parallel-testing-enabled NO
+make smoke-examples
+make test-examples-gpu
 ```
 
-Run `make test-all` locally to include the GPU-dependent suite. GPU validation
-requires Apple silicon and Metal. A change to the declared support baseline
+Run `make test-all` locally to include the GPU-dependent suites. GPU validation
+requires Apple silicon and Metal; example validation also requires Tuist. A change to the declared support baseline
 must update this matrix and add or revise an executable CI validation path.

@@ -1,82 +1,26 @@
 import Foundation
+import ArgumentParser
 import MLX
 import MLXNN
 import MLXOptimizers
 import MLXKit
-import TinyDecoderCore
 
-private struct ExampleOptions {
+struct ExampleOptions: ParsableArguments {
+    @Option(name: .customLong("vocab"), help: "Vocabulary size.")
     var vocabularySize = 256
+    @Option(help: "Model width.")
     var width = 128
+    @Option(name: .customLong("heads"), help: "Attention head count.")
     var headCount = 4
+    @Option(help: "Input tokens per row.")
     var sequenceLength = 64
+    @Option(help: "Training epochs.")
     var epochs = 12
     var trainingRows = 32
     var validationRows = 8
     var batchSize = 4
+    @Flag(help: "Use a smaller fixed fixture and model for CI.")
     var smoke = false
-
-    static func parse(_ arguments: [String]) throws -> ExampleOptions {
-        if arguments.contains("--help") {
-            print("Usage: swift run TinyDecoderExample [--smoke] [options]")
-            print("  --smoke                 Use a smaller fixed fixture and model for CI.")
-            print("  --vocab <count>         Vocabulary size (default: 256).")
-            print("  --width <count>         Model width (default: 128).")
-            print("  --heads <count>         Attention head count (default: 4).")
-            print("  --sequence-length <n>   Input tokens per row (default: 64).")
-            print("  --epochs <count>        Training epochs (default: 12).")
-            exit(EXIT_SUCCESS)
-        }
-
-        var options = ExampleOptions()
-        if arguments.contains("--smoke") {
-            guard arguments.count == 1 else {
-                throw OptionsError.invalidArgument("--smoke cannot be combined with other options")
-            }
-            options = ExampleOptions(
-                vocabularySize: 32,
-                width: 16,
-                headCount: 2,
-                sequenceLength: 16,
-                epochs: 12,
-                trainingRows: 16,
-                validationRows: 4,
-                batchSize: 4,
-                smoke: true
-            )
-            return options
-        }
-
-        var index = 0
-        while index < arguments.count {
-            let flag = arguments[index]
-            guard index + 1 < arguments.count,
-                  let value = Int(arguments[index + 1])
-            else {
-                throw OptionsError.invalidArgument(flag)
-            }
-            switch flag {
-            case "--vocab": options.vocabularySize = value
-            case "--width": options.width = value
-            case "--heads": options.headCount = value
-            case "--sequence-length": options.sequenceLength = value
-            case "--epochs": options.epochs = value
-            default: throw OptionsError.invalidArgument(flag)
-            }
-            index += 2
-        }
-
-        guard options.vocabularySize > 1,
-              options.width > 0,
-              options.headCount > 0,
-              options.width % options.headCount == 0,
-              options.sequenceLength >= 5,
-              options.epochs > 0
-        else {
-            throw OptionsError.invalidConfiguration
-        }
-        return options
-    }
 }
 
 private enum OptionsError: Error, LocalizedError {
@@ -199,20 +143,53 @@ private func makeArtifactMetadata(options: ExampleOptions) -> [String: String] {
 }
 
 @main
-struct TinyDecoderExample {
-    static func main() async throws {
-        let options = try ExampleOptions.parse(Array(CommandLine.arguments.dropFirst()))
+struct TinyDecoderExample: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Train and evaluate a small causal decoder on a local token fixture."
+    )
+
+    @OptionGroup var parsedOptions: ExampleOptions
+
+    mutating func run() async throws {
+        var options = parsedOptions
+        if options.smoke {
+            guard options.vocabularySize == 256,
+                  options.width == 128,
+                  options.headCount == 4,
+                  options.sequenceLength == 64,
+                  options.epochs == 12
+            else {
+                throw OptionsError.invalidArgument("--smoke cannot be combined with model options")
+            }
+            options.vocabularySize = 32
+            options.width = 16
+            options.headCount = 2
+            options.sequenceLength = 16
+            options.trainingRows = 16
+            options.validationRows = 4
+        }
+
+        guard options.vocabularySize > 1,
+              options.width > 0,
+              options.headCount > 0,
+              options.width % options.headCount == 0,
+              options.sequenceLength >= 5,
+              options.epochs > 0
+        else {
+            throw OptionsError.invalidConfiguration
+        }
+
         seed(42)
-        let model = makeModel(options)
+        let model = Self.makeModel(options)
         let objective = NextTokenObjective()
         let optimizer = Adam(learningRate: options.smoke ? 0.01 : 0.003)
         let configuration = TrainingConfiguration(optimizer: optimizer, objective: objective)
-        let trainingData = makeBatches(
+        let trainingData = Self.makeBatches(
             count: options.trainingRows,
             offset: 0,
             options: options
         )
-        let validationData = makeBatches(
+        let validationData = Self.makeBatches(
             count: options.validationRows,
             offset: options.trainingRows * 73,
             options: options
@@ -268,7 +245,7 @@ struct TinyDecoderExample {
 
         print("Tiny causal decoder (local implementation example; not a large-scale LLM)")
         print("mode=\(options.smoke ? "smoke" : "full") input=[\(options.batchSize), \(options.sequenceLength)] vocab=\(options.vocabularySize) width=\(options.width) heads=\(options.headCount) blocks=2")
-        print("Initial loss: train=\(formatted(initialTraining["loss"])), held-out=\(formatted(initialValidation["loss"]))")
+        print("Initial loss: train=\(Self.formatted(initialTraining["loss"])), held-out=\(Self.formatted(initialValidation["loss"]))")
 
         let history = try await engine.fit(
             model,
@@ -336,14 +313,14 @@ struct TinyDecoderExample {
             throw DecoderExampleError.invalidGeneratedTokens
         }
 
-        try verifyInferenceArtifact(
+        try Self.verifyInferenceArtifact(
             model: model,
             validationInput: validationData.batches[0].input,
             generatedTokens: generated,
             options: options
         )
 
-        print("Training loss: \(formatted(finalTrainLoss)) · held-out loss: \(formatted(finalHeldOutLoss))")
+        print("Training loss: \(Self.formatted(finalTrainLoss)) · held-out loss: \(Self.formatted(finalHeldOutLoss))")
         print("Logits shape: \(firstLogits.shape) · generated token IDs: \(generated)")
         print("Finite, nonzero gradients · parameters updated · inference artifact round trip passed")
         print("Trained \(history.epochs.count) epochs using local fixed token rows; Adam optimizer state is not included in the inference artifact.")

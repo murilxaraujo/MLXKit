@@ -266,9 +266,9 @@ MLXOptimizers APIs when an algorithm needs a custom optimizer update.
 Run the deterministic local examples and validation commands with:
 
 ```sh
-swift run MNISTExample
-swift run TinyDecoderExample
-swift run DataPipelineExample
+make run-example
+make run-tiny-decoder
+make run-data-pipeline
 make test
 make test-gpu
 make docs

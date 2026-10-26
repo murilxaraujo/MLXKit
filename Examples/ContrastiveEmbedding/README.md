@@ -13,20 +13,20 @@ vectors. It does not download a dataset.
 
 ## Run
 
-From the repository root:
+From the repository root, after generating the examples project:
 
 ```sh
-swift build --product ContrastiveEmbeddingExample
-swift run ContrastiveEmbeddingExample
+make examples-generate
+tuist run --path Examples ContrastiveEmbeddingExample
 ```
 
 For a smaller bounded run suitable for CI smoke checks or quick local checks:
 
 ```sh
-swift run ContrastiveEmbeddingExample --smoke
+tuist run --path Examples ContrastiveEmbeddingExample --smoke
 ```
 
-Use `swift run ContrastiveEmbeddingExample --help` to print the options. The
+Use `tuist run --path Examples ContrastiveEmbeddingExample --help` to print the options. The
 smoke mode changes fixture size and epoch count, not the model, objective, or
 correctness checks.
 

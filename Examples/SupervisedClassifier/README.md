@@ -13,23 +13,23 @@ an inference artifact.
 
 ## Run
 
-From the repository root:
+From the repository root, after generating the examples project:
 
 ```sh
-swift build --product MNISTExample
-swift run MNISTExample
+make examples-generate
+tuist run --path Examples MNISTExample
 ```
 
 For a smaller bounded run suitable for a CI smoke check or quick local check:
 
 ```sh
-swift run MNISTExample --smoke
+tuist run --path Examples MNISTExample --smoke
 ```
 
 Both commands use the same model, data-generation method, validation checks,
 and artifact round-trip verification. The smoke option reduces the number of
-examples and epochs. `swift run MNISTExample --help` prints the available
-options.
+examples and epochs. `tuist run --path Examples MNISTExample --help` prints the
+available options.
 
 ## Fixture and model
 

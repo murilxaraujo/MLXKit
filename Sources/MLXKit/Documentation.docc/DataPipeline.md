@@ -12,13 +12,13 @@ For a runnable, network-free example that covers both indexed data and a
 generated stream, run:
 
 ```sh
-swift run DataPipelineExample
+make run-data-pipeline
 ```
 
 The existing in-memory classifier example is also local and synthetic:
 
 ```sh
-swift run MNISTExample
+make run-example
 ```
 
 ## In-memory array data

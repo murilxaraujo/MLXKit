@@ -9,7 +9,7 @@ download data.
 Run it with the default configuration:
 
 ```sh
-swift run TinyDecoderExample
+make run-tiny-decoder
 ```
 
 The vocabulary size, hidden width, attention head count, maximum sequence
@@ -17,7 +17,8 @@ length, and epoch count can be changed from the command line. The width must be
 divisible by the head count.
 
 ```sh
-swift run TinyDecoderExample --vocab 24 --width 48 --heads 4 --sequence-length 10 --epochs 3
+make examples-generate
+tuist run --path Examples TinyDecoder --vocab 24 --width 48 --heads 4 --sequence-length 10 --epochs 3
 ```
 
 The model combines token and position embeddings, a causal multi-head
@@ -33,8 +34,8 @@ loss computation for both `fit` and `evaluate`; MLXKit still performs
 autodiff and optimizer updates, and MLXOptimizers still owns the optimizer
 algorithm. Use direct MLX and MLXOptimizers APIs for a custom update algorithm.
 
-The decoder implementation lives in the example's internal `TinyDecoderCore`
-target. Its `TinyDecoder` conforms to `TrainableModel`, and
+The decoder implementation lives in the example's `TinyDecoder/Core` sources.
+Its `TinyDecoder` conforms to `TrainableModel`, and
 `NextTokenObjective` conforms to `Objective<MLXArray, MLXArray>`. The batch
 sequence pairs each token row with the same row shifted left by one position.
 `TrainingEngine` supplies each model output and its corresponding target to the

@@ -1,3 +1,4 @@
+import ArgumentParser
 import MLX
 import MLXNN
 import MLXOptimizers
@@ -46,12 +47,12 @@ private struct SyntheticSampleStream: AsyncSequence {
 }
 
 @main
-struct DataPipelineExample {
-    static func main() async throws {
-        try await run()
-    }
+struct DataPipelineExample: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Demonstrate indexed in-memory and streaming MLXKit data pipelines."
+    )
 
-    nonisolated private static func run() async throws {
+    mutating func run() async throws {
         let model = ScalarRegressionModel()
         let configuration = TrainingConfiguration(
             optimizer: SGD(learningRate: 0.05),

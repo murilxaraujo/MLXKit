@@ -1,6 +1,6 @@
 # Tiny causal decoder example
 
-This root-package executable trains a small decoder-only language model on a
+This Tuist command-line executable trains a small decoder-only language model on a
 fixed local token fixture, evaluates held-out rows, greedily generates a short
 continuation, and round-trips an inference artifact. It is a runnable
 implementation study, not a claim of general language capability or a faithful
@@ -8,17 +8,16 @@ reproduction of the original Transformer experiments.
 
 ## Requirements and commands
 
-- Supported baseline: Apple silicon, macOS 27+, and the dependencies in
-  `Package.resolved`.
+- Supported baseline: Apple silicon, macOS 27+, and the dependencies resolved
+  by the root package and Tuist project.
 - Training and inference use generated local integer-token rows. No corpus,
   tokenizer files, credentials, or dataset downloads are required.
-- Resolve/fetch Swift package dependencies as required, then run from the
+- Resolve/fetch dependencies with `make examples-generate`, then run from the
   repository root:
 
 ```sh
-swift build --product TinyDecoderExample
-swift run TinyDecoderExample
-swift run TinyDecoderExample --smoke
+tuist run --path Examples TinyDecoder
+tuist run --path Examples TinyDecoder --smoke
 ```
 
 The default configuration is vocabulary 256, width 128, four attention heads,
@@ -36,7 +35,7 @@ The model has learned token embeddings, learned absolute position embeddings,
 two pre-normalized decoder blocks, and a vocabulary projection tied to the
 token-embedding weights. Each block has a residual multi-head self-attention
 layer and a residual four-times-width GELU feed-forward network. Attention is
-implemented in `Sources/TinyDecoderCore/TinyDecoder.swift` with public MLX
+implemented in `TinyDecoder/Core/TinyDecoder.swift` with public MLX
 operations:
 
 ```text

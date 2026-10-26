@@ -1,12 +1,10 @@
-// GPU-dependent tiny-decoder correctness tests — run via `make test-gpu`.
+// GPU-dependent tiny-decoder correctness tests — run via `make test-examples-gpu`.
 
-#if MLX_GPU_TESTS
 import Testing
 import MLX
 import MLXNN
 import MLXOptimizers
 import MLXKit
-@testable import TinyDecoderCore
 
 @Suite("Tiny decoder correctness (GPU)", .serialized)
 struct TinyDecoderGPUTests {
@@ -137,4 +135,3 @@ struct TinyDecoderGPUTests {
         )
     }
 }
-#endif
