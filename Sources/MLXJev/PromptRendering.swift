@@ -5,8 +5,10 @@ enum DecisionPromptRenderer {
     static let jevMLXPromptVersion = "jevmlx-swift-v1"
 
     static let systemOneSystem =
-        "Apply the question to the state. Choose exactly one of the listed options. " +
-        "Respond with only its uppercase letter, with no explanation or reasoning."
+        "Apply the question to the state. Choose exactly one of the listed options. "
+        + "Respond with only its uppercase letter, with no explanation or reasoning."
+    static let defaultYesDescription = "the statement is true / the answer is yes"
+    static let defaultNoDescription = "the statement is false / the answer is no"
 
     static func messages(
         for request: DecisionRequest,
@@ -35,7 +37,8 @@ enum DecisionPromptRenderer {
                 ? "\(option.label). \(option.name)"
                 : "\(option.label). \(option.name): \(option.description)"
         }.joined(separator: "\n")
-        let answerLine = labels.count <= 26
+        let answerLine =
+            labels.count <= 26
             ? "Answer with one letter: \(labels.joined(separator: ", "))."
             : "Answer with one label: \(labels.joined(separator: ", "))."
         let suffix: String
@@ -45,7 +48,8 @@ enum DecisionPromptRenderer {
             suffix = "Question: \(instructions)\n\nOptions:\n\(optionsText)\n\n\(answerLine)"
         }
         let stateText = try request.state.renderedText()
-        let userContent = "<state>\n\(stateText)\n</state>\n\n\(suffix)"
+        let mediaHint = request.media.isEmpty ? "" : "\n\nUse the attached screenshot(s) as visual evidence."
+        let userContent = "<state>\n\(stateText)\n</state>\n\n\(suffix)\(mediaHint)"
         return [
             DecisionPromptMessage(role: .system, content: systemOneSystem),
             DecisionPromptMessage(role: .user, content: userContent),
@@ -70,13 +74,17 @@ enum DecisionPromptRenderer {
                 : "\(option.label). \(option.name): \(option.description)"
         }.joined(separator: "\n")
 
-        let system = "You are a judgment engine. Choose the option that best matches the state. " +
-            "Use only the listed options."
+        let system =
+            "You are a judgment engine. Choose the option that best matches the state. "
+            + "Use only the listed options."
         let stateText = try request.state.renderedText()
-        let answerInstruction = slotLabels.isEmpty
+        let mediaHint = request.media.isEmpty ? "" : "\n\nUse the attached screenshot(s) as visual evidence."
+        let answerInstruction =
+            slotLabels.isEmpty
             ? "Return only the selected option name."
             : "Return only the option label: \(slotLabels.joined(separator: ", "))."
-        let user = "State:\n\(stateText)\n\nQuestion:\n\(instructions)\n\nOptions:\n\(optionsText)\n\n\(answerInstruction)\nAnswer:"
+        let user =
+            "State:\n\(stateText)\n\nQuestion:\n\(instructions)\n\nOptions:\n\(optionsText)\n\n\(answerInstruction)\(mediaHint)\nAnswer:"
         return [
             DecisionPromptMessage(role: .system, content: system),
             DecisionPromptMessage(role: .user, content: user),
@@ -96,14 +104,17 @@ enum DecisionPromptRenderer {
         let rawOptions: [(String, DecisionValue?)]
         switch question.kind {
         case .boolean(let trueDescription, let falseDescription):
-            rawOptions = [("yes", trueDescription), ("no", falseDescription)]
+            rawOptions = [
+                ("yes", trueDescription ?? .string(defaultYesDescription)),
+                ("no", falseDescription ?? .string(defaultNoDescription)),
+            ]
         case .choice(let options), .multiSelect(let options):
             rawOptions = options.map { ($0.id, $0.description) }
         case .ordinal(let levels):
             rawOptions = levels.enumerated().map { (String($0.offset), $0.element) }
         }
 
-        guard rawOptions.count <= labels.count else {
+        guard labels.isEmpty || rawOptions.count <= labels.count else {
             throw DecisionError.tooManyOptions(
                 questionID: question.id, count: rawOptions.count, maximum: labels.count
             )
@@ -111,7 +122,8 @@ enum DecisionPromptRenderer {
 
         return try rawOptions.enumerated().map { index, entry in
             let description = try entry.1.map(renderEntry) ?? ""
-            return DisplayOption(label: labels.isEmpty ? "" : labels[index], name: entry.0, description: description)
+            return DisplayOption(
+                label: labels.isEmpty ? "" : labels[index], name: entry.0, description: description)
         }
     }
 

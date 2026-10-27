@@ -1,12 +1,11 @@
 // swift-tools-version: 6.4
 
+import Foundation
 import PackageDescription
 
 /// Set to `true` to enable GPU-dependent tests (requires Apple Silicon + Metal).
 /// Use `make test-all` or pass `-Xswiftc -DMLX_GPU_TESTS` to enable.
 let enableGPUTests = ProcessInfo.processInfo.environment["MLX_GPU_TESTS"] != nil
-
-import Foundation
 
 // Executable examples live in the standalone Tuist project under Examples/.
 let package = Package(
@@ -27,6 +26,8 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.32.3"),
         .package(url: "https://github.com/ml-explore/mlx-swift-lm", from: "3.32.3"),
+        .package(url: "https://github.com/huggingface/swift-huggingface", from: "0.9.0"),
+        .package(url: "https://github.com/huggingface/swift-transformers", from: "1.3.0"),
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.5.0"),
     ],
     targets: [
@@ -47,6 +48,9 @@ let package = Package(
                 .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
                 .product(name: "MLXLLM", package: "mlx-swift-lm"),
                 .product(name: "MLXVLM", package: "mlx-swift-lm"),
+                .product(name: "MLXHuggingFace", package: "mlx-swift-lm"),
+                .product(name: "HuggingFace", package: "swift-huggingface"),
+                .product(name: "Tokenizers", package: "swift-transformers"),
             ]
         ),
         .executableTarget(

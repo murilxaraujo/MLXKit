@@ -16,6 +16,7 @@ public enum DecisionError: Error, LocalizedError, Sendable {
     case invalidTemperature(Double)
     case invalidAnswerSlot(String)
     case optionScoreFailure(String)
+    case requestLimitExceeded(String)
 
     public var errorDescription: String? {
         switch self {
@@ -49,6 +50,8 @@ public enum DecisionError: Error, LocalizedError, Sendable {
             "Answer label '\(label)' is not one round-trip tokenizer token."
         case .optionScoreFailure(let option):
             "Could not score option '\(option)'."
+        case .requestLimitExceeded(let reason):
+            "Decision request exceeds the configured limit: \(reason)."
         }
     }
 }

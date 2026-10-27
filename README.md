@@ -92,6 +92,14 @@ try Checkpointing.loadWeights(into: restoredModel, from: weightsURL)
 | **Serialization** | Versioned weight and inference artifacts; epoch-boundary recovery when an optimizer implements `CheckpointableOptimizer` |
 | **Utilities** | `model.printSummary()` with tabular param counts and memory estimates |
 
+## MLXJev decision inference
+
+The separate `MLXJev` product provides a common typed request/result API with
+selectable `.systemOne` and `.jevMLX(scoring:)` strategies. It scores bounded
+answers from model logits instead of generating free-form JSON. See the
+[MLXJev guide](Sources/MLXJev/Documentation.docc/MLXJev.md) for an example and
+current adapter limitations.
+
 ## Running Tests
 
 ```bash
