@@ -1,0 +1,10 @@
+name: mlxkit-wikitext2-rnn
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy=1.26.4
+  - nltk=3.9.1
+  - pip
+  - pip:
+      - torch==2.6.0

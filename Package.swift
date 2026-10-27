@@ -59,6 +59,18 @@ let package = Package(
             exclude: ["README.md"],
             sources: ["Sources/MNISTCNNBenchmark.swift"]
         ),
+        .executableTarget(
+            name: "WikiText2RNNBenchmark",
+            dependencies: [
+                "MLXKit",
+                .product(name: "MLX", package: "mlx-swift"),
+                .product(name: "MLXNN", package: "mlx-swift"),
+                .product(name: "MLXOptimizers", package: "mlx-swift"),
+            ],
+            path: "Benchmarking/wikitext2-rnn/mlxkit",
+            exclude: ["README.md"],
+            sources: ["Sources/WikiText2RNNBenchmark.swift"]
+        ),
         .testTarget(
             name: "MLXKitTests",
             dependencies: ["MLXKit"],

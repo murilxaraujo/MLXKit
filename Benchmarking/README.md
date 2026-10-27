@@ -6,11 +6,11 @@ same model trained with MLXKit. The goal is to demonstrate how these
 architectures are expressed with MLXKit and to report comparable quality and
 performance measurements.
 
-The [MNIST MLP](mnist-mlp/README.md) and [MNIST CNN](mnist-cnn/README.md) have
-independent reference-framework and MLXKit runners. Other workloads remain
-scaffolding while their dataset sources, exact configurations, and
-reference-framework versions are selected. No benchmark result or performance
-claim is implied by this plan.
+The [MNIST MLP](mnist-mlp/README.md), [MNIST CNN](mnist-cnn/README.md), and
+[WikiText-2 RNN](wikitext2-rnn/README.md) have independent reference-framework
+and MLXKit runners. Other workloads remain scaffolding while their dataset
+sources, exact configurations, and reference-framework versions are selected.
+No benchmark result or performance claim is implied by this plan.
 
 ## Workload order
 
@@ -22,11 +22,12 @@ materialized; model activations and optimizer state require additional memory.
 |---:|---|---|---|---|
 | 1 | [MNIST MLP](mnist-mlp/README.md) | ~47 MB as `uint8`, ~188 MB as `float32` for 60,000 training images | Low | Test accuracy |
 | 2 | [MNIST CNN](mnist-cnn/README.md) | Same MNIST data as above | Low–medium | Test accuracy |
-| 3 | [WikiText-2 LSTM](wikitext2-lstm/README.md) | A few to tens of MB after tokenization | Medium | Validation perplexity |
-| 4 | [CIFAR-10 ResNet-18](cifar10-resnet18/README.md) | ~154 MB as `uint8`, ~614 MB as `float32` for 50,000 training images | Medium | Test accuracy |
-| 5 | [WikiText-2 Transformer LM](wikitext2-transformer-lm/README.md) | Same WikiText-2 corpus as above | Medium–high | Validation perplexity |
-| 6 | [Cora GCN](cora-gcn/README.md) | Small: typically tens of MB or less | High if sparse graph operations need custom handling | Test accuracy |
-| 7 | [IWSLT14 Transformer](iwslt14-transformer/README.md) | Usually tens of MB after tokenization; preprocessing-dependent | High | BLEU (and validation loss) |
+| 3 | [WikiText-2 vanilla RNN](wikitext2-rnn/README.md) | A few to tens of MB after tokenization | Medium | Validation perplexity |
+| 4 | [WikiText-2 LSTM](wikitext2-lstm/README.md) | Same WikiText-2 corpus as above | Medium | Validation perplexity |
+| 5 | [CIFAR-10 ResNet-18](cifar10-resnet18/README.md) | ~154 MB as `uint8`, ~614 MB as `float32` for 50,000 training images | Medium | Test accuracy |
+| 6 | [WikiText-2 Transformer LM](wikitext2-transformer-lm/README.md) | Same WikiText-2 corpus as above | Medium–high | Validation perplexity |
+| 7 | [Cora GCN](cora-gcn/README.md) | Small: typically tens of MB or less | High if sparse graph operations need custom handling | Test accuracy |
+| 8 | [IWSLT14 Transformer](iwslt14-transformer/README.md) | Usually tens of MB after tokenization; preprocessing-dependent | High | BLEU (and validation loss) |
 
 The estimates are planning guides, not measured memory requirements. In
 particular, Cora is tiny as a dataset but may be complex to implement because
@@ -79,11 +80,11 @@ percentage does not hide the scale of the quality change.
 
 ## Run status
 
-The MNIST MLP and CNN commands and setup are documented in their workload
-READMEs. The other workloads do not have runnable benchmark commands yet.
-Performance runs are intended for a local Apple-silicon machine, not routine CI.
-Keep any future bounded correctness smoke checks separate from timed benchmark
-results.
+The MNIST MLP, CNN, and WikiText-2 RNN commands and setup are documented in
+their workload READMEs. The other workloads do not have runnable benchmark
+commands yet. Performance runs are intended for a local Apple-silicon machine,
+not routine CI. Keep bounded correctness smoke checks separate from full timed
+benchmark results.
 
 ## Results record template
 

@@ -14,5 +14,8 @@ DerivedData/
 /Benchmarking/mnist-mlp/.build/
 /Benchmarking/mnist-cnn/results/
 /Benchmarking/mnist-cnn/.build/
+/Benchmarking/wikitext2-rnn/data/
+/Benchmarking/wikitext2-rnn/results/
+/Benchmarking/wikitext2-rnn/.build/
 /Benchmarking/**/__pycache__/
 /Benchmarking/**/*.py[cod]
