@@ -19,9 +19,14 @@ let package = Package(
             name: "MLXKit",
             targets: ["MLXKit"]
         ),
+        .library(
+            name: "MLXJev",
+            targets: ["MLXJev"]
+        ),
     ],
     dependencies: [
         .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.32.3"),
+        .package(url: "https://github.com/ml-explore/mlx-swift-lm", from: "3.32.3"),
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.5.0"),
     ],
     targets: [
@@ -33,6 +38,15 @@ let package = Package(
                 .product(name: "MLXRandom", package: "mlx-swift"),
                 .product(name: "MLXFast", package: "mlx-swift"),
                 .product(name: "MLXOptimizers", package: "mlx-swift"),
+            ]
+        ),
+        .target(
+            name: "MLXJev",
+            dependencies: [
+                .product(name: "MLX", package: "mlx-swift"),
+                .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
+                .product(name: "MLXLLM", package: "mlx-swift-lm"),
+                .product(name: "MLXVLM", package: "mlx-swift-lm"),
             ]
         ),
         .executableTarget(
@@ -75,6 +89,10 @@ let package = Package(
             name: "MLXKitTests",
             dependencies: ["MLXKit"],
             swiftSettings: enableGPUTests ? [.define("MLX_GPU_TESTS")] : []
+        ),
+        .testTarget(
+            name: "MLXJevTests",
+            dependencies: ["MLXJev"]
         ),
     ]
 )
